@@ -68,6 +68,22 @@ class WalkNetwork:
         print(f"  Red peatonal: {net._n} nodos, {len(keep)} aristas")
         return net
 
+    def to_npz(self, path) -> None:
+        """Guarda la red ya proyectada (sin geometrías de arista: solo hacen falta para isócronas)."""
+        np.savez_compressed(
+            path, node_xy=self._xy, u=self._u.astype(np.int32), v=self._v.astype(np.int32),
+            w=self._w, crs=np.array(self._utm.to_wkt()),
+        )
+
+    @classmethod
+    def from_npz(cls, path) -> "WalkNetwork":
+        """Carga una red guardada con to_npz (no necesita osmnx)."""
+        from pyproj import CRS
+
+        with np.load(path) as d:
+            return cls(d["node_xy"], d["u"].astype(np.int64), d["v"].astype(np.int64), d["w"],
+                       None, CRS.from_wkt(str(d["crs"])))
+
     @staticmethod
     def _build_csr(n, u, v, w, extra=None):
         """Matriz de adyacencia simétrica. `extra` = (u, v, w) de aristas virtuales."""
@@ -165,6 +181,8 @@ class WalkNetwork:
     def isochrone(self, node_idx: int, limit_m: float, start_offset: float = 0.0,
                   buffer_m: float = 25):
         """Polígono de la zona alcanzable a pie desde un nodo (buffer de aristas)."""
+        if self._geoms is None:
+            raise RuntimeError("Red cargada sin geometrías (from_npz): usa WalkNetwork.load para isócronas")
         budget = limit_m - start_offset
         if budget <= 0:
             return None

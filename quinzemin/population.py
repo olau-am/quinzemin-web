@@ -68,7 +68,7 @@ def _area_codes(areas, template: str) -> pd.Series:
     return areas.drop(columns="geometry").apply(fmt, axis=1)
 
 
-def assign(cfg: dict, areas) -> "pd.Series | None":
+def assign(cfg: dict, areas, csv_path: str = POPULATION_CSV) -> "pd.Series | None":
     """
     Devuelve una Serie (índice de `areas`) con los habitantes de cada área, o None si no
     hay población configurada/disponible. Las secciones partidas en varios polígonos
@@ -85,11 +85,11 @@ def assign(cfg: dict, areas) -> "pd.Series | None":
             return None
         return pd.to_numeric(areas[field], errors="coerce").fillna(0)
 
-    if not os.path.exists(POPULATION_CSV):
-        print(f"⚠ No existe {POPULATION_CSV} — ejecuta download_data.py (sin datos de población)")
+    if not os.path.exists(csv_path):
+        print(f"⚠ No existe {csv_path} — ejecuta download_data.py (sin datos de población)")
         return None
 
-    table = pd.read_csv(POPULATION_CSV, dtype={"codigo": str})
+    table = pd.read_csv(csv_path, dtype={"codigo": str})
     codes = _area_codes(areas, pop_cfg["area_code"])
     by_code = table.set_index("codigo")["poblacion"]
 
