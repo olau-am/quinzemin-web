@@ -21,8 +21,8 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from quinzemin import bundle as qb  # noqa: E402
-from quinzemin import config, engine  # noqa: E402
+from quinzemin import bundle as qb
+from quinzemin import config, engine
 
 INE = "46250"
 DATA = ROOT / "legacy" / "workdir" / "data"
