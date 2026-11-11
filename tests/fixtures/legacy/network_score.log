@@ -1,0 +1,42 @@
+⚠ 4 secciones del INE sin polígono en la capa de áreas (3.251 hab. fuera del análisis): 4625002044, 4625011024, 4625011037, 4625013011
+Población asignada: 825.759 hab. en 589 áreas
+  Leyendo red peatonal: data/walk_graph.graphml
+  Red peatonal: 62852 nodos, 94902 aristas
+Centros de Salud: 386/589 áreas con acceso <800m por la red (48 elementos en la red, 200 descartados por estar a >500 m)
+Ed. Primaria: 556/589 áreas con acceso <800m por la red (170 elementos en la red, 0 descartados por estar a >500 m)
+Ed. Secundaria: 526/589 áreas con acceso <800m por la red (109 elementos en la red, 0 descartados por estar a >500 m)
+Transporte Público: 576/589 áreas con acceso <800m por la red (1698 elementos en la red, 177 descartados por estar a >500 m)
+Supermercados: 561/589 áreas con acceso <800m por la red (354 elementos en la red, 23 descartados por estar a >500 m)
+Zonas Verdes: 579/589 áreas con acceso <800m por la red (806 elementos en la red, 0 descartados por estar a >500 m)
+Cultura: 485/589 áreas con acceso <800m por la red (145 elementos en la red, 10 descartados por estar a >500 m)
+Farmacias: 560/589 áreas con acceso <800m por la red (347 elementos en la red, 17 descartados por estar a >500 m)
+
+Distancias de enganche a la red (m):
+  conjunto                   n     p50     p90     p99     max   >150
+  origen (centroides)      589    27.3    65.1   123.1  2703.4      6
+  salud                     48    24.5    68.4   450.2   467.2      3
+  primaria                 170    22.0    52.2    69.4    88.8      0
+  secundaria               109    21.8    47.2    65.2    77.8      0
+  transporte              1698    15.8    48.1   356.0   495.3     54
+  supermercados            354    27.7    58.8   315.5   443.0     10
+  zonas_verdes           26155     0.0     0.0     0.0    47.3      0
+  cultura                  145    26.0    60.1   383.2   471.8      7
+  farmacias                347    14.7    44.8   365.5   489.4     12
+  → data/snap_report.csv
+
+Población con acceso (825.759 hab.):
+  Centros de Salud           65,0 %
+  Ed. Primaria               94,4 %
+  Ed. Secundaria             88,9 %
+  Transporte Público         97,8 %
+  Supermercados              95,2 %
+  Zonas Verdes               98,1 %
+  Cultura                    81,2 %
+  Farmacias                  94,6 %
+  Todos los servicios        54,6 %
+  Ningún servicio             1,6 %
+  Puntuación media           95,6/100
+  → data/cobertura_poblacion.csv
+Emoji markers: 259 áreas con servicios faltantes
+
+Mapa guardado en docs\index.html

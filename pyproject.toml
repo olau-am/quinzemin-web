@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quinzemin"
+version = "0.1.0"
+description = "Accesibilidad a servicios básicos (ciudad de los 15 minutos) por sección censal: motor, API y web"
+readme = "README.md"
+requires-python = ">=3.13"
+# Núcleo del motor: lo necesario para compute(bundle, params) en runtime (sin osmnx)
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "geopandas>=1.0",
+    "shapely>=2.0",
+    "pyproj>=3.6",
+    "scipy>=1.13",
+    "pyarrow>=16",
+    "pyyaml>=6.0",
+    "requests>=2.32",
+]
+
+[project.optional-dependencies]
+# Preparación de ciudades (Cloud Run Job y local): descarga de la red peatonal OSM
+prepare = ["osmnx>=2.0"]
+# API (Cloud Run service)
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "google-cloud-storage>=2.18",
+    "google-cloud-run>=0.10",
+]
+# CLI local con mapa folium (memoria del TFM) y código legacy/
+viz = ["folium>=0.17", "matplotlib>=3.9"]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
+
+[tool.setuptools.packages.find]
+include = ["quinzemin*", "api*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "data: necesita los datos locales de València (data/ o legacy/workdir/data/)",
+    "slow: tarda más de un minuto",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+extend-exclude = ["legacy"]

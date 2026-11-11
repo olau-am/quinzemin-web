@@ -1,0 +1,27 @@
+⚠ 4 secciones del INE sin polígono en la capa de áreas (3.251 hab. fuera del análisis): 4625002044, 4625011024, 4625011037, 4625013011
+Población asignada: 825.759 hab. en 589 áreas
+Centros de Salud: 536/589 áreas con acceso <800m (248 elementos)
+Ed. Primaria: 573/589 áreas con acceso <800m (170 elementos)
+Ed. Secundaria: 564/589 áreas con acceso <800m (109 elementos)
+Transporte Público: 583/589 áreas con acceso <800m (1875 elementos)
+Supermercados: 573/589 áreas con acceso <800m (377 elementos)
+Zonas Verdes: 584/589 áreas con acceso <800m (806 elementos)
+Cultura: 555/589 áreas con acceso <800m (155 elementos)
+Farmacias: 572/589 áreas con acceso <800m (364 elementos)
+
+Población con acceso (825.759 hab.):
+  Centros de Salud           91,3 %
+  Ed. Primaria               97,6 %
+  Ed. Secundaria             96,1 %
+  Transporte Público         99,1 %
+  Supermercados              97,5 %
+  Zonas Verdes               99,1 %
+  Cultura                    94,2 %
+  Farmacias                  97,5 %
+  Todos los servicios        88,6 %
+  Ningún servicio             0,6 %
+  Puntuación media           98,2/100
+  → data/cobertura_poblacion.csv
+Emoji markers: 67 áreas con servicios faltantes
+
+Mapa guardado en docs\index.html

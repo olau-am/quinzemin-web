@@ -1,0 +1,46 @@
+{
+  "distance_count": {
+    "mode": "distance",
+    "view": "count",
+    "seconds": 3.3,
+    "areas": 589,
+    "distance_m": 800,
+    "time_minutes": 15,
+    "decay": 1.0,
+    "max_walk_to_stop_m": 500,
+    "walking_speed_mpm": 80
+  },
+  "distance_score": {
+    "mode": "distance",
+    "view": "score",
+    "seconds": 3.2,
+    "areas": 589,
+    "distance_m": 800,
+    "time_minutes": 15,
+    "decay": 2.0,
+    "max_walk_to_stop_m": 500,
+    "walking_speed_mpm": 80
+  },
+  "network_count": {
+    "mode": "network",
+    "view": "count",
+    "seconds": 24.0,
+    "areas": 589,
+    "distance_m": 800,
+    "time_minutes": 15,
+    "decay": 1.0,
+    "max_walk_to_stop_m": 500,
+    "walking_speed_mpm": 80
+  },
+  "network_score": {
+    "mode": "network",
+    "view": "score",
+    "seconds": 17.4,
+    "areas": 589,
+    "distance_m": 800,
+    "time_minutes": 15,
+    "decay": 2.0,
+    "max_walk_to_stop_m": 500,
+    "walking_speed_mpm": 80
+  }
+}

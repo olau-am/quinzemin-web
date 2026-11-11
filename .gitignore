@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Datos descargados y generados (bundles locales, catálogo nacional, caché de runs)
+# (docs/data/ sí se versiona: es el precálculo de València que sirve GitHub Pages)
+/data/
+legacy/workdir/
+
+# Entorno / IDE
+.env
+.vscode/
+.idea/
+.DS_Store
+*.code-workspace
+
+# Credenciales de GCP: nunca en el repo (se usa Workload Identity Federation)
+*-key.json
+credentials*.json

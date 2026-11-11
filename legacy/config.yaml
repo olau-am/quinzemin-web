@@ -1,0 +1,179 @@
+city:
+  name: "Valencia"
+  center: [39.4699, -0.3763]   # [lat, lon] del centro del mapa
+  zoom: 12
+  bbox: "39.38,-0.45,39.55,-0.29"  # (S,W,N,E) para queries Overpass
+
+  # Atribuciones visibles en el control de Leaflet (esquina inferior derecha del mapa).
+  # Cada entrada puede tener solo "label" o añadir "url" para enlazarla.
+  # Dejar vacío ([]) si no aplica ninguna atribución adicional a la de OSM tiles.
+  attributions:
+    - label: "© OpenStreetMap contributors (ODbL)"
+      url: "https://www.openstreetmap.org/copyright"
+    - label: "Ajuntament de València"
+      url: "https://www.valencia.es/val/open-data"
+    - label: "ICV/GVA"
+      url: "https://icv.gva.es"
+    - label: "FGV"
+      url: "https://www.metrovalencia.es"
+    - label: "EMT"
+      url: "https://www.emtvalencia.es"
+    - label: "INE"
+      url: "https://www.ine.es"
+
+  # Capa de áreas de análisis (secciones censales u otra división territorial)
+  areas:
+    url: "https://geoportal.valencia.es/server/rest/services/OPENDATA/UrbanismoEInfraestructuras/MapServer/210/query?where=1=1&outFields=*&f=geojson"
+    id_field: "coddistsecc"   # campo que identifica cada área en el tooltip
+
+  # Población por área (opcional). Permite calcular qué % de la población tiene acceso
+  # a cada servicio y la "prioridad" (habitantes × déficit) de la vista score.
+  # Fuente: INE — Atlas de Distribución de Renta de los Hogares, "Indicadores demográficos"
+  # de la provincia (tabla 31258 = Valencia/València), concepto "Población" (Padrón a 1 de enero).
+  # Otra provincia: buscar su tabla "Indicadores demográficos" del ADRH en INEbase y cambiar
+  # el número de tabla; nult=1 → último año publicado.
+  population:
+    url: "https://servicios.ine.es/wstempus/js/ES/DATOS_TABLA/31258?nult=1&tv=260:17338&tip=AM"
+    municipality: "46250"     # código INE del municipio (5 dígitos)
+    # Código INE de sección (10 dígitos) construido con los campos de cada área
+    area_code: "46250{coddistrit:02d}{codsecc:03d}"
+    # Alternativa: si la capa de áreas ya trae los habitantes, indicar solo el campo
+    # field: "poblacion"
+
+analysis:
+  # Modo de cálculo de accesibilidad:
+  #   "distance" → radio euclidiano simple (por defecto, sin GTFS)
+  #   "transit"  → isócrona por transporte público (requiere gtfs_sources)
+  #   "network"  → distancia a pie por la red peatonal real de OSM (requiere osmnx, scipy)
+  mode: network
+  distance_m: 800         # radio en metros (modo distance)
+  time_minutes: 15         # presupuesto total de viaje en minutos (modo transit)
+  walking_speed_mpm: 80    # metros por minuto a pie (~4.8 km/h)
+  max_walk_to_stop_m: 500  # máx. distancia a pie hasta/desde una parada
+  # Puntuación 0–100 (map.view: score). Válida para cualquier modo de cálculo:
+  # cada servicio aporta 100 % hasta el umbral (distance_m o time_minutes) y su aporte
+  # cae linealmente hasta 0 en umbral × decay. decay: 1 → criterio binario (dentro/fuera).
+  # Cada servicio puede llevar "weight" (por defecto 1) para pesar más en la puntuación.
+  scoring:
+    decay: 2.0
+  # Opciones del modo network (red peatonal OSM)
+  network:
+    graph_path: data/walk_graph.graphml
+    buffer_m: 1000          # margen alrededor del término al descargar (evita efecto borde)
+    consolidate_m: 0        # 0 = no consolidar intersecciones (preserva pasos de peatones)
+    snap_warn_m: 150        # avisar si un punto se engancha a la red a más de X m
+    max_snap_m: 500         # descartar servicios a más de X m de la red (fuera del área)
+    park_access_m: 20       # servicios con access: polygon → nodos dentro del polígono + margen
+    isochrone_buffer_m: 25  # buffer de aristas para el polígono de la isócrona (visual)
+  # Fuentes GTFS (se pueden combinar varias redes).
+  # Datos estáticos: suficientes para análisis de accesibilidad típica.
+  # GTFS-RT (tiempo real) no aplica — solo añade posiciones/retrasos instantáneos.
+  # Valenbisi usa GBFS (bicicletas), formato distinto; no entra en este grafo.
+  gtfs_sources:
+    - id: metro
+      label: "Metrovalencia (FGV)"
+      # Feed oficial de FGV — fuente más cercana a la Generalitat Valenciana
+      # Referencia NAP: https://nap.transportes.gob.es/Files/Detail/967
+      url: "http://www.metrovalencia.es/google_transit_feed/google_transit.zip"
+      # El servidor redirige a HTTPS con certificado FNMT (no incluido en Python por defecto)
+      verify_ssl: false
+    - id: emt
+      label: "EMT Valencia (autobuses urbanos)"
+      # Portal Datos Abiertos Ajuntament de València (CC BY 4.0)
+      # Catálogo: https://datos.gob.es/es/catalogo/l01462508-google-transit-lineas-paradas-horarios-de-autobuses-de-la-emt-de-valencia
+      # Referencia NAP: https://nap.transportes.gob.es/Files/Detail/965
+      # Nota: el nombre del fichero lleva la fecha de publicación y cambia en cada actualización
+      url: "https://opendata.vlci.valencia.es/dataset/ab058cf8-ad3e-4d9c-ac89-0c6367ecf351/resource/c81b69e6-c082-44dc-acc6-66fc417b4e66/download/google_transit2026-05-31.zip"
+
+map:
+  emoji_min_zoom: 14  # zoom mínimo a partir del cual aparecen los emojis
+  # Qué representa el mapa principal (compatible con distance, network y transit):
+  #   "count" → nº de servicios accesibles por área (0..N)
+  #   "score" → PUNTUACIÓN 0–100 por área + prioridad (habitantes × déficit)
+  # En ambas vistas, si hay población, la leyenda muestra el % de habitantes con acceso.
+  view: score
+
+# Lista de servicios a analizar.
+# Tipos disponibles:
+#   url     → descarga directa de un GeoJSON desde una URL
+#   overpass → consulta a la API de OpenStreetMap (Overpass); usa {bbox} como placeholder
+#
+# Un servicio puede declarar "sources" (lista) para combinar varias fuentes en un solo archivo.
+# Cada fuente admite los mismos campos type/url/overpass_query/name_field que el servicio raíz.
+# Los nombres de las distintas fuentes se normalizan automáticamente al name_field del servicio.
+#
+# Campos opcionales:
+#   access          → "polygon": en modo network el destino es todo el polígono (parques)
+#   weight          → peso del servicio en la puntuación 0–100 (vista score, por defecto 1)
+#   filter.field    → nombre del campo sobre el que filtrar
+#   filter.contains → subcadena que debe contener el campo (búsqueda sin distinción de mayúsculas)
+
+services:
+  - id: salud
+    label: "Centros de Salud"
+    emoji: "🏥"
+    url: "https://terramapas.icv.gva.es/15_SistemaValencianoSalud?request=GetFeature&service=WFS&version=2.0.0&typename=CentrosSanitarios.CentrosSalud&outputformat=geojson"
+    name_field: "cen_desclar"
+
+  - id: primaria
+    label: "Ed. Primaria"
+    emoji: "🏫"
+    url: "https://opendata.vlci.valencia.es/dataset/11436f0c-082b-4e5b-9659-005f5b528bde/resource/938e34b7-bb7d-4b0c-8176-3602d47ebd6a/download/centros-educativos-en-valencia.geojson"
+    name_field: "dlibre"
+    filter:
+      field: "dgenerica"
+      contains: "PRIMÀR"
+
+  - id: secundaria
+    label: "Ed. Secundaria"
+    emoji: "📚"
+    url: "https://opendata.vlci.valencia.es/dataset/11436f0c-082b-4e5b-9659-005f5b528bde/resource/938e34b7-bb7d-4b0c-8176-3602d47ebd6a/download/centros-educativos-en-valencia.geojson"
+    name_field: "dlibre"
+    filter:
+      field: "dgenerica"
+      contains: "SECUNDÀR"
+
+  - id: transporte
+    label: "Transporte Público"
+    emoji: "🚌"
+    name_field: "nombre"
+    sources:
+      - type: url
+        label: "Metrovalencia"
+        url: "https://geoportal.valencia.es/server/rest/services/OPENDATA/Trafico/MapServer/221/query?where=1=1&outFields=*&f=geojson"
+        name_field: "nombre"
+      - type: overpass
+        label: "EMT Valencia"
+        # Paradas de bus EMT en Valencia (OpenStreetMap, ODbL)
+        overpass_query: '(nwr["highway"="bus_stop"]({bbox});); out center;'
+        name_field: "name"
+
+  - id: supermercados
+    label: "Supermercados"
+    emoji: "🛒"
+    type: overpass
+    overpass_query: '(nwr["shop"="supermarket"]({bbox});); out center;'
+    name_field: "name"
+
+  - id: zonas_verdes
+    label: "Zonas Verdes"
+    emoji: "🌳"
+    url: "https://geoportal.valencia.es/server/rest/services/OPENDATA/MedioAmbiente/MapServer/8/query?where=1=1&outFields=*&f=geojson"
+    name_field: "nombre"
+    access: polygon   # modo network: se llega a cualquier punto del parque, no a su centroide
+
+  - id: cultura
+    label: "Cultura"
+    emoji: "🎭"
+    type: overpass
+    # Incluye: bibliotecas, teatros, cines y centros culturales/artes
+    overpass_query: '(nwr["amenity"="library"]({bbox});nwr["amenity"="theatre"]({bbox});nwr["amenity"="cinema"]({bbox});nwr["amenity"="arts_centre"]({bbox});); out center;'
+    name_field: "name"
+
+  - id: farmacias
+    label: "Farmacias"
+    emoji: "💊"
+    type: overpass
+    # OpenStreetMap — cobertura excelente en España (ODbL)
+    overpass_query: '(nwr["amenity"="pharmacy"]({bbox});); out center;'
+    name_field: "name"
