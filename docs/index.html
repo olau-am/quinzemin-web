@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>quinzemin · ciudad de los 15 minutos</title>
+  <meta name="description" content="Acceso a servicios básicos por sección censal: puntuación de accesibilidad y prioridad.">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div id="map" aria-label="Mapa de accesibilidad"></div>
+
+  <header id="qm-header" class="qm-card">
+    <h1>quinzemin</h1>
+    <div id="qm-subtitle">Cargando…</div>
+  </header>
+
+  <aside id="qm-legend" class="qm-card" aria-live="polite">
+    <button id="qm-legend-toggle" type="button" aria-expanded="true" title="Mostrar u ocultar la leyenda">▾</button>
+    <div id="qm-legend-body"></div>
+  </aside>
+
+  <div id="qm-status" class="qm-card" hidden></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
