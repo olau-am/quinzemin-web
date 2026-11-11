@@ -1,0 +1,11 @@
+servicio,etiqueta,pct_poblacion
+salud,Centros de Salud,97.74
+primaria,Ed. Primaria,98.23
+secundaria,Ed. Secundaria,98.18
+transporte,Transporte Público,98.23
+supermercados,Supermercados,98.23
+zonas_verdes,Zonas Verdes,98.42
+cultura,Cultura,98.23
+farmacias,Farmacias,98.23
+_todos,Todos los servicios,97.74
+_ninguno,Ningún servicio,1.58

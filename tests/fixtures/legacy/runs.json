@@ -42,5 +42,27 @@
     "decay": 2.0,
     "max_walk_to_stop_m": 500,
     "walking_speed_mpm": 80
+  },
+  "transit_count": {
+    "mode": "transit",
+    "view": "count",
+    "seconds": 545.1,
+    "areas": 589,
+    "distance_m": 800,
+    "time_minutes": 15,
+    "decay": 1.0,
+    "max_walk_to_stop_m": 500,
+    "walking_speed_mpm": 80
+  },
+  "transit_score": {
+    "mode": "transit",
+    "view": "score",
+    "seconds": 984.5,
+    "areas": 589,
+    "distance_m": 800,
+    "time_minutes": 15,
+    "decay": 2.0,
+    "max_walk_to_stop_m": 500,
+    "walking_speed_mpm": 80
   }
 }

@@ -1,0 +1,33 @@
+⚠ 4 secciones del INE sin polígono en la capa de áreas (3.251 hab. fuera del análisis): 4625002044, 4625011024, 4625011037, 4625013011
+Población asignada: 825.759 hab. en 589 áreas
+  Leyendo Metrovalencia (FGV): data/gtfs_metro.zip
+  Leyendo EMT Valencia (autobuses urbanos): data/gtfs_emt.zip
+  Construyendo grafo de paradas...
+  Grafo combinado: 1304 paradas, 1079981 aristas (2 fuentes)
+Calculando alcance por transporte público (589 centroides)...
+  Listo.
+Centros de Salud: 574/589 áreas con acceso <15min
+Ed. Primaria: 577/589 áreas con acceso <15min
+Ed. Secundaria: 576/589 áreas con acceso <15min
+Transporte Público: 577/589 áreas con acceso <15min
+Supermercados: 577/589 áreas con acceso <15min
+Zonas Verdes: 578/589 áreas con acceso <15min
+Cultura: 577/589 áreas con acceso <15min
+Farmacias: 577/589 áreas con acceso <15min
+
+Población con acceso (825.759 hab.):
+  Centros de Salud           97,7 %
+  Ed. Primaria               98,2 %
+  Ed. Secundaria             98,2 %
+  Transporte Público         98,2 %
+  Supermercados              98,2 %
+  Zonas Verdes               98,4 %
+  Cultura                    98,2 %
+  Farmacias                  98,2 %
+  Todos los servicios        97,7 %
+  Ningún servicio             1,6 %
+  Puntuación media           98,3/100
+  → data/cobertura_poblacion.csv
+Emoji markers: 15 áreas con servicios faltantes
+
+Mapa guardado en docs\index.html
