@@ -1,0 +1,47 @@
+# Plantilla de servicios para municipios sin configuración propia (config/cities/{ine}.yaml).
+# Fuente: OpenStreetMap (© OpenStreetMap contributors, ODbL), descargado con osmnx (Overpass).
+#
+# tags: etiquetas OSM (formato de osmnx.features_from_polygon: clave → true | valor | [valores]).
+# access: polygon → en el modo red se llega a cualquier punto del polígono (parques); el resto de
+#         servicios se reduce a un punto (como el "out center" de Overpass del proyecto original).
+# education: el servicio se divide en primaria/secundaria si los datos lo permiten (ver osm.py).
+
+services:
+  - id: salud
+    label: "Centros de Salud"
+    emoji: "🏥"
+    tags: {amenity: [clinic, doctors], healthcare: centre}
+
+  - id: educacion
+    label: "Educación"
+    emoji: "🏫"
+    tags: {amenity: school}
+    education:
+      primaria:   {label: "Ed. Primaria",   emoji: "🏫"}
+      secundaria: {label: "Ed. Secundaria", emoji: "📚"}
+
+  - id: transporte
+    label: "Transporte Público"
+    emoji: "🚌"
+    tags: {highway: bus_stop, railway: [station, tram_stop]}
+
+  - id: supermercados
+    label: "Supermercados"
+    emoji: "🛒"
+    tags: {shop: supermarket}
+
+  - id: zonas_verdes
+    label: "Zonas Verdes"
+    emoji: "🌳"
+    tags: {leisure: park}
+    access: polygon
+
+  - id: cultura
+    label: "Cultura"
+    emoji: "🎭"
+    tags: {amenity: [library, theatre, cinema, arts_centre]}
+
+  - id: farmacias
+    label: "Farmacias"
+    emoji: "💊"
+    tags: {amenity: pharmacy}

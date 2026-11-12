@@ -12,6 +12,8 @@ dist/
 # (docs/data/ sí se versiona: es el precálculo de València que sirve GitHub Pages)
 /data/
 legacy/workdir/
+# caché de respuestas de osmnx/Overpass
+cache/
 
 # Entorno / IDE
 .env

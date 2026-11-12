@@ -8,8 +8,8 @@ Genera docs/data/cities/46250/:
 Uso (desde la raíz del repo):
   PYTHONIOENCODING=utf-8 .venv/Scripts/python scripts/precompute.py
 
-De momento usa los datos del proyecto original (legacy/workdir/data: secciones del geoportal
-municipal). Cuando exista prepare.py (fase 2) pasará al bundle con la cartografía del INE.
+Parte del bundle de València (cities/46250/ del almacenamiento, secciones censales del INE), que
+genera:  PYTHONIOENCODING=utf-8 .venv/Scripts/python -m quinzemin.prepare 46250 --gtfs
 """
 import json
 import sys
@@ -22,10 +22,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from quinzemin import bundle as qb
-from quinzemin import config, engine
+from quinzemin import config, engine, storage
 
 INE = "46250"
-DATA = ROOT / "legacy" / "workdir" / "data"
 OUT = ROOT / "docs" / "data" / "cities" / INE
 SIMPLIFY_M = 2.0
 
@@ -44,7 +43,7 @@ def main() -> None:
     cfg = yaml.safe_load(config.city_config_path(INE).read_text(encoding="utf-8"))
     cfg["analysis"]["mode"] = "network"
     cfg["map"]["view"] = "score"
-    b = qb.load_legacy(cfg, DATA, transit=False)
+    b = qb.load(storage.from_env(), INE, transit=False)
     params = qb.params_from_config(cfg)
     res = engine.compute(b, params)
     t = res.table
@@ -71,9 +70,13 @@ def main() -> None:
         }
 
     city = cfg["city"]
+    attribution = config.build_attr({"city": {"attributions": b.meta["attributions"]}})
+    # El INE, el Ajuntament y el NAP piden indicar la fecha de obtención de los datos
+    y, m, d = b.meta["prepared_at"][:10].split("-")
+    attribution += f" | Datos obtenidos el {d}/{m}/{y}"
     payload = {
-        "city": {"ine": INE, "name": city["name"], "center": city["center"], "zoom": city["zoom"],
-                 "attribution": config.build_attr(cfg),
+        "city": {"ine": INE, "name": b.meta["name"], "center": b.meta["center"], "zoom": city["zoom"],
+                 "attribution": attribution,
                  "emoji_min_zoom": cfg.get("map", {}).get("emoji_min_zoom", 14)},
         "params": {"mode": params.mode, "view": params.view, "distance_m": params.distance_m,
                    "time_minutes": params.time_minutes, "decay": params.decay,

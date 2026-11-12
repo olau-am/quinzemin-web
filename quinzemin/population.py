@@ -28,7 +28,7 @@ def _parse_ine(rows: list, municipality: str) -> pd.DataFrame:
     for r in rows:
         code = next((m.get("Codigo", "") for m in r.get("MetaData", [])
                      if len(m.get("Codigo", "")) == 10), "")
-        if not code.startswith(municipality):
+        if len(code) != 10 or not code.startswith(municipality):
             continue
         data = [d for d in r.get("Data", []) if d.get("Valor") is not None]
         if not data:

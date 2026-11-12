@@ -30,6 +30,14 @@ DAY_S = 16 * 3600        # horas de servicio supuestas para el headway
 MAX_HOP_S = 3600         # tramos entre paradas consecutivas más largos se descartan
 
 
+def _strip(df: pd.DataFrame) -> pd.DataFrame:
+    """Quita espacios al principio y al final de todos los valores de texto."""
+    for c in df.columns:
+        if df[c].dtype == object or pd.api.types.is_string_dtype(df[c]):
+            df[c] = df[c].str.strip()
+    return df
+
+
 def _hms_seconds(s: pd.Series) -> pd.Series:
     """'HH:MM:SS' → segundos (admite > 24:00); vacío → NaN."""
     s = s.str.strip()
@@ -74,23 +82,46 @@ class TransitGraph:
     # ------------------------------------------------------------------
 
     @classmethod
-    def load(cls, sources: list[dict], utm_crs) -> "TransitGraph":
+    def load(cls, sources: list[dict], utm_crs, clip=None) -> "TransitGraph":
         """
         Carga y combina uno o varios feeds GTFS en un único grafo.
 
         sources: lista de dicts con claves id (prefijo sin espacios, p. ej. "metro"),
         label (para logs) y path (ZIP GTFS). Los stop_id y trip_id se prefijan con «id_»
         para evitar colisiones entre redes.
+        clip: polígono en EPSG:4326; si se da, solo se conservan las paradas de dentro (feeds
+        regionales o nacionales). Un viaje que sale y vuelve a entrar se une por sus paradas
+        interiores con el tiempo real entre ellas; solo se pierden trasbordos fuera de la zona.
         """
         stops_l, times_l = [], []
         for src in sources:
             prefix = src["id"] + "_"
             print(f"  Leyendo {src.get('label', src['id'])}: {src['path']}")
             with zipfile.ZipFile(src["path"]) as z:
-                stops = pd.read_csv(z.open("stops.txt"), dtype=str).fillna("")
-                times = pd.read_csv(z.open("stop_times.txt"), dtype=str,
-                                    usecols=["trip_id", "arrival_time", "departure_time",
-                                             "stop_id", "stop_sequence"]).fillna("")
+                def member(name, z=z):
+                    return next(n for n in z.namelist() if n.split("/")[-1] == name)
+                stops = _strip(pd.read_csv(z.open(member("stops.txt")), dtype=str,
+                                           encoding="utf-8-sig").rename(columns=str.strip)).fillna("")
+                if clip is not None:
+                    lat = pd.to_numeric(stops["stop_lat"], errors="coerce")
+                    lon = pd.to_numeric(stops["stop_lon"], errors="coerce")
+                    inside = shapely.contains_xy(clip, lon.fillna(0).to_numpy(), lat.fillna(0).to_numpy())
+                    stops = stops[inside & lat.notna().to_numpy()]
+                keep = set(stops["stop_id"]) if clip is not None else None
+                cols = ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]
+                parts = []
+                # Por trozos (los feeds grandes no caben enteros en memoria). Algunos feeds (Renfe)
+                # rellenan con espacios las cabeceras y los valores: se recortan.
+                with z.open(member("stop_times.txt")) as fh:
+                    for chunk in pd.read_csv(fh, dtype=str, encoding="utf-8-sig", chunksize=1_000_000,
+                                             usecols=lambda c: c.strip() in cols):
+                        chunk = _strip(chunk.rename(columns=str.strip))
+                        if keep is not None:
+                            chunk = chunk[chunk["stop_id"].isin(keep)]
+                        parts.append(chunk.fillna(""))
+                times = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=cols)
+            if clip is not None:
+                print(f"    recorte: {len(stops)} paradas y {len(times)} horarios dentro de la zona")
             stops["stop_id"] = prefix + stops["stop_id"]
             times["stop_id"] = prefix + times["stop_id"]
             times["trip_id"] = prefix + times["trip_id"]

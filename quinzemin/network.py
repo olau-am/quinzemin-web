@@ -44,7 +44,13 @@ class WalkNetwork:
         import osmnx as ox
 
         print(f"  Leyendo red peatonal: {path}")
-        G = ox.load_graphml(path)
+        return cls.from_graph(ox.load_graphml(path), utm_crs)
+
+    @classmethod
+    def from_graph(cls, G, utm_crs) -> "WalkNetwork":
+        """Desde un grafo de osmnx (sin proyectar o proyectado)."""
+        import osmnx as ox
+
         G = ox.project_graph(G, to_crs=utm_crs)
         nodes, edges = ox.graph_to_gdfs(G)
 

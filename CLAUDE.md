@@ -19,7 +19,11 @@ no volver a preguntar lo que ya está decidido (§2).**
 | Ruta | Qué es |
 |---|---|
 | `quinzemin/engine.py` | motor: `compute(Bundle, Params) → Result` (tabla por área + `stats`) |
-| `quinzemin/bundle.py` | `load_legacy()` (datos del proyecto original) y `params_from_config()` |
+| `quinzemin/bundle.py` | `load(st, ine)` (bundle de la web), `load_legacy()` (datos del proyecto original), `params_from_config()` |
+| `quinzemin/storage.py` | `LocalStorage` (./data) / `GCSStorage` (bucket), mismas rutas; `from_env()` (`QM_STORAGE`) |
+| `quinzemin/catalog.py` | catálogo nacional `spain/`: secciones INE por provincia, población ADRH, `municipios.json` |
+| `quinzemin/prepare.py` | prepara un municipio → `cities/{ine}/` (áreas, servicios, red npz, GTFS opcional) |
+| `quinzemin/osm.py` | plantilla OSM (`config/osm_services.yaml`), consulta única con mirrors Overpass, clasificación de colegios |
 | `quinzemin/network.py`, `gtfs.py` | red peatonal (`to_npz`/`from_npz`) y grafo GTFS vectorizado |
 | `quinzemin/population.py`, `download.py`, `config.py` | población INE, descargas, YAML |
 | `quinzemin/cli.py`, `render_folium.py` | CLI local con mapa folium (memoria del TFM) |
@@ -36,8 +40,12 @@ Despliegue (ver [DEPLOY.md](DEPLOY.md)): web en GitHub Pages (`/docs`); API en C
 `quinzemin-api`, **`europe-southwest1`**, con despliegue continuo de Cloud Run desde el repo
 (Cloud Build + `Dockerfile`), **no** GitHub Actions + WIF como decía el handoff.
 
-Fase 1 cerrada. Pendiente: `storage.py` (Local/GCS, con la API), `prepare.py` (fase 2), resto de la API
-y `docker-compose.yml` (fase 3), panel de configuración de la web (fase 4).
+Fases 1 y 2 cerradas: catálogo, preparación (Burjassot 46078 y València 46250), test de cambio de
+cartografía y GTFS para cualquier ciudad (`quinzemin/gtfs_feeds.py`: Mobility Database o URL https
+validada contra SSRF; feeds recortados a la zona). Licencias y atribuciones: tabla en README.md;
+`prepare.build_attributions()` las genera en el `meta.json` con la fecha de obtención.
+Después: API y `docker-compose.yml` (fase 3), panel de configuración de la web (fase 4).
+Overpass público es lento e inestable: preparar un municipio tarda de 8 a 20 min, casi todo esperando.
 
 ## Repo original
 

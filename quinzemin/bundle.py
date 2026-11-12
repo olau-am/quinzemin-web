@@ -1,20 +1,48 @@
 """
 Construcción de un Bundle (datos de una ciudad listos para engine.compute).
 
-De momento solo desde el formato del proyecto original: un YAML como config/cities/46250.yaml
-y una carpeta con lo que deja download_data.py (areas.geojson, {servicio}.geojson,
-population.csv, gtfs_{id}.zip, walk_graph.graphml). El formato de bundle de la web
-(areas.parquet, services/*.parquet, walk_graph.npz, transit.pkl) llega con prepare.py (fase 2).
+  load(st, ine)   bundle de la web generado por prepare.py (cities/{ine}/ del almacenamiento)
+  load_legacy()   formato del proyecto original: YAML + carpeta de download_data.py
+                  (areas.geojson, {servicio}.geojson, population.csv, gtfs_{id}.zip,
+                  walk_graph.graphml); se usa en los tests de regresión
 """
 from __future__ import annotations
 
 import os
+import pickle
 from pathlib import Path
 
 import geopandas as gpd
 
 from quinzemin import population
+from quinzemin import storage as qs
 from quinzemin.engine import Bundle, Params, Service, ServiceParams
+
+
+def load(st: qs.Storage, ine: str, network: bool = True, transit: bool = True) -> Bundle:
+    """Carga cities/{ine}/ (los ficheros grandes se leen desde la ruta local / caché)."""
+    base = f"cities/{ine}"
+    meta = st.read_json(f"{base}/meta.json")
+    areas = gpd.read_parquet(st.local_path(f"{base}/areas.parquet"))
+    services = {}
+    for s in meta["services"]:
+        gdf = gpd.read_parquet(st.local_path(f"{base}/services/{s['id']}.parquet"))
+        services[s["id"]] = Service(id=s["id"], label=s["label"], features=gdf, emoji=s.get("emoji", ""),
+                                    polygon_access=s.get("polygon_access", False))
+    net = None
+    if network and meta.get("has_network"):
+        from quinzemin.network import WalkNetwork
+        net = WalkNetwork.from_npz(st.local_path(f"{base}/walk_graph.npz"))
+    tg = None
+    if transit and meta.get("has_transit"):
+        tg = pickle.loads(st.read_bytes(f"{base}/transit.pkl"))
+    return Bundle(areas=areas, services=services, network=net, transit=tg,
+                  meta={**meta, "zoom": meta.get("zoom", 13)})
+
+
+def default_params(b: Bundle, **kw) -> Params:
+    """Parámetros por defecto para un bundle: todos sus servicios con peso 1."""
+    return Params(services=[ServiceParams(sid) for sid in b.services], **kw)
 
 
 def load_legacy(cfg: dict, data_dir: str | Path, network: bool = True, transit: bool = True,
