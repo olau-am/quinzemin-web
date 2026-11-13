@@ -1,0 +1,35 @@
+# Compilación y despliegue en cada push a main (trigger de Cloud Build, ver DEPLOY.md).
+# Una sola imagen para el servicio de la API y el Job de preparación de municipios.
+substitutions:
+  _REGION: europe-southwest1
+  _REPO: cloud-run-source-deploy
+  _SERVICE: quinzemin-api
+  _JOB: quinzemin-prepare
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        IMG=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/quinzemin
+        docker pull $$IMG:latest || true
+        docker build --cache-from $$IMG:latest -t $$IMG:$SHORT_SHA -t $$IMG:latest .
+        docker push --all-tags $$IMG
+
+  - id: deploy-api
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args: [run, deploy, "${_SERVICE}", "--region=${_REGION}",
+           "--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/quinzemin:$SHORT_SHA"]
+
+  - id: update-job
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args: [run, jobs, update, "${_JOB}", "--region=${_REGION}",
+           "--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/quinzemin:$SHORT_SHA"]
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1800s

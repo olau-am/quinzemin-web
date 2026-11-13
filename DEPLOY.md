@@ -11,8 +11,8 @@ Dos piezas independientes, las dos se actualizan solas con cada push a `main`:
 
 - ✅ Web publicada con València (modo red peatonal, 800 m, vista puntuación).
 - ✅ `quinzemin-api` desplegado desde el repo; `GET /api/health` responde `{"status":"ok",...}`.
-- ⏳ Pendiente para las fases 2–3 (ver más abajo): bucket, Job de preparación, cuentas de servicio,
-  presupuesto y limpieza de imágenes.
+- ⏳ Pendiente: los pasos de «Puesta en marcha de la API completa» (bucket, Job, cuentas de servicio,
+  variables, catálogo) y, aparte, presupuesto y limpieza de imágenes.
 
 ## Web (GitHub Pages)
 
@@ -53,50 +53,82 @@ docker run --rm -p 8080:8080 quinzemin      # http://localhost:8080/api/health
 
 Sin Docker: `.venv/Scripts/python -m uvicorn api.app:app --reload` (puerto 8000).
 
-## Pendiente (antes de la fase 3)
+## Puesta en marcha de la API completa (fase 3)
 
-Todo en `europe-southwest1`. Se puede hacer desde la consola; entre paréntesis, la opción concreta.
+Todo en la consola de Google Cloud y en `europe-southwest1`. En orden: cada paso usa lo anterior.
 
-1. **Presupuesto con alerta a 1 €**
-   (*Facturación → Presupuestos y alertas → Crear*: ámbito el proyecto, importe 1 €, alertas al 50/90/100 %).
-   Solo avisa por correo: no corta el servicio. El límite real lo ponen las 2 instancias máximas y los
-   límites por IP de la API.
+### 1. Bucket de Cloud Storage
+*Cloud Storage → Buckets → Crear*:
+- nombre: el que quieras (único en todo Google Cloud), p. ej. `quinzemin-datos-<algo>`;
+- ubicación: **Región** `europe-southwest1`; clase **Standard**;
+- control de acceso **uniforme** y **prevención de acceso público** activada;
+- protección de datos: desmarcar **eliminación no definitiva** (soft delete).
 
-2. **Limpieza de imágenes** (*Artifact Registry → `cloud-run-source-deploy` → Editar → Políticas de
-   limpieza*): una política *Conservar las versiones más recientes* = 2 y otra *Eliminar* con antigüedad
-   > 1 día. La capa gratuita es de 0,5 GB y cada imagen ocupará unos 0,6–0,8 GB.
+Después, en el bucket → *Ciclo de vida → Añadir regla*: acción **Eliminar objeto**, condición
+**Antigüedad 30 días** y **Coincide con el prefijo** `runs/` y `jobs/`.
 
-3. **Bucket de Cloud Storage** (*Cloud Storage → Crear*): región `europe-southwest1`, clase Standard,
-   control de acceso uniforme, prevención de acceso público activada y *eliminación no definitiva*
-   (soft delete) desactivada. En *Ciclo de vida*, una regla *Eliminar objeto* con antigüedad 30 días y
-   prefijos `runs/` y `jobs/`. Guardará el catálogo nacional (`spain/`), los bundles de cada ciudad
-   (`cities/{ine}/`), la caché de resultados (`runs/`) y el estado de las preparaciones (`jobs/`).
-   En Madrid no hay capa gratuita de almacenamiento, pero con 1–3 GB son céntimos al mes; tenerlo en la
-   misma región que Cloud Run evita pagar tráfico entre continentes.
+Guardará `spain/` (catálogo nacional), `cities/{ine}/` (ciudades), `runs/` (caché de resultados),
+`jobs/` (estado de las preparaciones) y `locks/`.
 
-4. **Cuentas de servicio** (*IAM → Cuentas de servicio*):
-   - `quinzemin-api`: identidad del servicio. Permisos: *Usuario de objetos de Storage*
-     (`roles/storage.objectUser`) sobre el bucket y *Ejecutor de jobs de Cloud Run con anulaciones*
-     (`roles/run.jobsExecutorWithOverrides`) sobre el Job.
-   - `quinzemin-prepare`: identidad del Job. Permiso: `roles/storage.objectUser` sobre el bucket.
-   - Después, en el servicio `quinzemin-api` → *Editar e implementar nueva revisión → Seguridad*, elegir
-     la cuenta `quinzemin-api`.
+### 2. Cuentas de servicio
+*IAM y administración → Cuentas de servicio → Crear*:
+- `quinzemin-api` (identidad de la API) y `quinzemin-prepare` (identidad del Job).
 
-5. **Job `quinzemin-prepare`** (*Cloud Run → Jobs → Crear*): la misma imagen que el servicio, comando
-   `python -m quinzemin.prepare`, 2 vCPU, 4 GiB, tiempo de espera 3600 s, 0 reintentos, cuenta de
-   servicio `quinzemin-prepare`. Se crea cuando exista `prepare.py` (fase 2). El despliegue continuo solo
-   actualiza el servicio, así que habrá que añadir un `cloudbuild.yaml` que actualice también el Job.
+En el bucket → *Permisos → Conceder acceso*: las dos cuentas con el rol
+**Usuario de objetos de Storage** (`roles/storage.objectUser`).
 
-6. **Variables de entorno del servicio** (*Editar e implementar nueva revisión → Variables*), cuando la
-   API las use (fase 3):
+### 3. Job `quinzemin-prepare`
+*Cloud Run → Jobs → Crear trabajo*:
+- imagen: la que usa ahora el servicio (*Cloud Run → quinzemin-api → Revisiones*, copiar la URL de
+  la imagen de la última revisión); cada push la actualizará (paso 6);
+- nombre `quinzemin-prepare`, región `europe-southwest1`;
+- *Contenedor → Comando* `quinzemin-job` (argumentos vacíos: la API pasa el id del trabajo);
+- recursos **2 vCPU** y **4 GiB**; tiempo de espera de la tarea **3600 s**; **0** reintentos; 1 tarea;
+- *Variables*: `QM_STORAGE=gcs`, `QM_BUCKET=<bucket>`;
+- *Seguridad → Cuenta de servicio*: `quinzemin-prepare`.
 
-   | Variable | Valor |
-   |---|---|
-   | `QM_STORAGE` | `gcs` |
-   | `QM_BUCKET` | nombre del bucket |
-   | `QM_REGION` | `europe-southwest1` |
-   | `QM_PREPARE_JOB` | `quinzemin-prepare` |
-   | `QM_ALLOWED_ORIGINS` | `https://olau-am.github.io` |
+En el Job → *Permisos → Añadir principal*: `quinzemin-api` con el rol
+**Ejecutor de trabajos de Cloud Run con anulaciones** (`roles/run.jobsExecutorWithOverrides`).
+
+### 4. Servicio `quinzemin-api`
+*Cloud Run → quinzemin-api → Editar e implementar nueva revisión*:
+- *Variables y secretos*:
+
+  | Variable | Valor |
+  |---|---|
+  | `QM_STORAGE` | `gcs` |
+  | `QM_BUCKET` | el bucket del paso 1 |
+  | `QM_REGION` | `europe-southwest1` |
+  | `QM_PREPARE_JOB` | `quinzemin-prepare` |
+  | `QM_ALLOWED_ORIGINS` | `https://olau-am.github.io` |
+
+- *Seguridad → Cuenta de servicio*: `quinzemin-api`.
+
+### 5. Catálogo nacional (una vez)
+*Cloud Run → Jobs → quinzemin-prepare → Ejecutar con anulaciones* → argumentos: `catalog`.
+Tarda ~2 min (descarga la cartografía del INE, la población de las 52 provincias y el catálogo de
+feeds GTFS). Comprobar después que en el bucket existe `spain/municipios.json`.
+
+### 6. Despliegue de servicio y Job a la vez
+El despliegue continuo que creó la consola solo actualiza el servicio. Para que el Job use siempre
+la misma imagen: *Cloud Build → Activadores* → el activador de `quinzemin-web` → *Editar* →
+*Configuración*: **Archivo de configuración de Cloud Build**, ubicación `cloudbuild.yaml`.
+
+La cuenta de servicio del activador (se ve en el propio activador) necesita, si no los tiene:
+**Desarrollador de Cloud Run** (`roles/run.developer`), **Escritor de Artifact Registry** y
+**Usuario de cuenta de servicio** sobre `quinzemin-api` y `quinzemin-prepare`.
+
+### 7. Preparar València en la nube
+En `https://<URL-del-servicio>/docs` (documentación interactiva de la API) →
+`POST /api/cities/{ine}/prepare` → *Try it out* → `ine` = `46250` → *Execute*. Devuelve un trabajo;
+su progreso se ve en `GET /api/jobs/{id}` (15–20 min, casi todo esperando a Overpass).
+
+### Comprobación
+- `GET /api/health` → `"storage": "gcs"`.
+- `GET /api/cities` → València.
+- `POST /api/runs` con `{"ine": "46250", "mode": "network"}` → resultado; la segunda vez, cabecera
+  `X-Cache: hit`.
+- *Facturación → Informes*: el consumo sigue en la capa gratuita.
 
 ## Costes a vigilar
 

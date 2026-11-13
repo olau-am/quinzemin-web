@@ -12,3 +12,4 @@ docs
 scripts
 *.md
 !README.md
+cache

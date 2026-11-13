@@ -1,0 +1,22 @@
+# Desarrollo local con Docker: API + web, con los datos en ./data (almacenamiento local).
+#   docker compose up --build
+#   web:  http://localhost:8000        API: http://localhost:8080/api/health
+# Antes, una vez:  python -m quinzemin.catalog   (y preparar alguna ciudad, o hacerlo desde la web)
+services:
+  api:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      QM_STORAGE: local
+      QM_DATA_DIR: /data
+      QM_ALLOWED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+    volumes:
+      - ./data:/data
+    # En local la preparación se ejecuta en un hilo de la propia API (no hay Cloud Run Job)
+
+  web:
+    image: python:3.13-slim
+    command: python -m http.server 8000 -d /web
+    ports: ["8000:8000"]
+    volumes:
+      - ./docs:/web:ro

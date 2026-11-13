@@ -21,6 +21,7 @@ class Storage:
     def read_bytes(self, key: str) -> bytes: ...
     def write_bytes(self, key: str, data: bytes, content_type: str | None = None) -> None: ...
     def exists(self, key: str) -> bool: ...
+    def delete(self, key: str) -> None: ...
     def list(self, prefix: str) -> list[str]: ...
     def create_if_absent(self, key: str, data: bytes) -> bool:
         """Escritura atómica solo si no existe (lock). True si la ha creado."""
@@ -65,6 +66,9 @@ class LocalStorage(Storage):
     def exists(self, key):
         return self._p(key).exists()
 
+    def delete(self, key):
+        self._p(key).unlink(missing_ok=True)
+
     def list(self, prefix):
         base = self._p(prefix)
         if base.is_file():
@@ -95,7 +99,11 @@ class GCSStorage(Storage):
         self._cache = Path(cache_dir or Path(tempfile.gettempdir()) / "quinzemin-cache")
 
     def read_bytes(self, key):
-        return self._bucket.blob(key).download_as_bytes()
+        from google.api_core.exceptions import NotFound
+        try:
+            return self._bucket.blob(key).download_as_bytes()
+        except NotFound as e:          # mismo error que en local
+            raise FileNotFoundError(key) from e
 
     def write_bytes(self, key, data, content_type=None):
         self._bucket.blob(key).upload_from_string(data, content_type=content_type)
@@ -105,6 +113,13 @@ class GCSStorage(Storage):
 
     def exists(self, key):
         return self._bucket.blob(key).exists()
+
+    def delete(self, key):
+        from google.api_core.exceptions import NotFound
+        try:
+            self._bucket.blob(key).delete()
+        except NotFound:
+            pass
 
     def list(self, prefix):
         return sorted(b.name for b in self._bucket.client.list_blobs(self._bucket, prefix=prefix))

@@ -16,13 +16,15 @@ from pathlib import Path
 import pandas as pd
 
 from quinzemin import bundle as qb
-from quinzemin import config, engine, population
+from quinzemin import config, engine, population, storage
 
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="quinzemin: accesibilidad por sección censal")
     ap.add_argument("--config", default=str(config.city_config_path()), help="YAML de la ciudad")
-    ap.add_argument("--data", default="data", help="carpeta con los datos descargados")
+    ap.add_argument("--data", default="data", help="carpeta con los datos descargados (formato del proyecto original)")
+    ap.add_argument("--ine", help="usar el bundle preparado de este municipio (python -m quinzemin.prepare INE); "
+                                  "con --config, los parámetros salen del YAML (p. ej. el que descarga la web)")
     ap.add_argument("--mode", choices=engine.MODES)
     ap.add_argument("--view", choices=engine.VIEWS)
     ap.add_argument("--distance", type=float, help="umbral en metros (distance/network)")
@@ -34,15 +36,23 @@ def main(argv=None) -> None:
     ap.add_argument("--open", action="store_true", help="abrir el mapa en el navegador")
     a = ap.parse_args(argv)
 
-    cfg = config.load(a.config)
-    params = qb.params_from_config(cfg)
+    cfg = config.load(a.config) if (a.config != str(config.city_config_path()) or not a.ine) else None
+    if a.ine and cfg is None and config.city_config_path(a.ine).exists():
+        cfg = config.load(config.city_config_path(a.ine))
+    t0 = time.perf_counter()
+    if a.ine:
+        b = qb.load(storage.from_env(), a.ine)
+        params = qb.params_from_config(cfg) if cfg else qb.default_params(b)
+        if cfg is None:
+            cfg = {"city": {"attributions": b.meta.get("attributions") or []}, "map": {}}
+    else:
+        params = qb.params_from_config(cfg)
     for attr, val in (("mode", a.mode), ("view", a.view), ("distance_m", a.distance),
                       ("time_minutes", a.minutes), ("decay", a.decay)):
         if val is not None:
             setattr(params, attr, val)
-
-    t0 = time.perf_counter()
-    b = qb.load_legacy(cfg, a.data, network=params.mode == "network", transit=params.mode == "transit")
+    if not a.ine:
+        b = qb.load_legacy(cfg, a.data, network=params.mode == "network", transit=params.mode == "transit")
     t1 = time.perf_counter()
     res = engine.compute(b, params)
     t2 = time.perf_counter()

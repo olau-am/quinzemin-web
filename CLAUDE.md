@@ -27,7 +27,10 @@ no volver a preguntar lo que ya está decidido (§2).**
 | `quinzemin/network.py`, `gtfs.py` | red peatonal (`to_npz`/`from_npz`) y grafo GTFS vectorizado |
 | `quinzemin/population.py`, `download.py`, `config.py` | población INE, descargas, YAML |
 | `quinzemin/cli.py`, `render_folium.py` | CLI local con mapa folium (memoria del TFM) |
-| `api/app.py` | FastAPI (de momento solo `/api/health`) |
+| `api/app.py` | FastAPI: ciudades, municipios, `POST /api/runs` (caché `runs/`), preparación por trabajos, límites |
+| `quinzemin/results.py` | payload JSON común (API y precálculo), hash de parámetros, YAML reproducible |
+| `quinzemin/jobs.py` | trabajos `jobs/{id}.json` + lock; local = hilo, gcs = Cloud Run Job (`quinzemin-job`) |
+| `Dockerfile`, `cloudbuild.yaml`, `docker-compose.yml` | imagen única API + Job; build que actualiza ambos; desarrollo local |
 | `docs/` | web en GitHub Pages: `index.html`, `app.js`, `app.css`, `data/cities/46250/` |
 | `config/cities/46250.yaml` | configuración de València (fuentes municipales), antes `config.yaml` |
 | `legacy/` | copia **congelada** del `src/` original para el snapshot de regresión; no editar |
@@ -44,7 +47,8 @@ Fases 1 y 2 cerradas: catálogo, preparación (Burjassot 46078 y València 46250
 cartografía y GTFS para cualquier ciudad (`quinzemin/gtfs_feeds.py`: Mobility Database o URL https
 validada contra SSRF; feeds recortados a la zona). Licencias y atribuciones: tabla en README.md;
 `prepare.build_attributions()` las genera en el `meta.json` con la fecha de obtención.
-Después: API y `docker-compose.yml` (fase 3), panel de configuración de la web (fase 4).
+Fase 3: API, trabajos, Docker y tests hechos y probados en local; falta la puesta en marcha en Google
+Cloud (pasos en DEPLOY.md, los hace el usuario desde la consola). Después: panel de la web (fase 4).
 Overpass público es lento e inestable: preparar un municipio tarda de 8 a 20 min, casi todo esperando.
 
 ## Repo original

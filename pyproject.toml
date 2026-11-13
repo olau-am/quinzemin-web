@@ -21,6 +21,9 @@ dependencies = [
     "requests>=2.32",
 ]
 
+[project.scripts]
+quinzemin-job = "quinzemin.jobs:main"     # entrada del Cloud Run Job
+
 [project.optional-dependencies]
 # Preparación de ciudades (Cloud Run Job y local): descarga de la red peatonal OSM
 prepare = ["osmnx>=2.0"]
