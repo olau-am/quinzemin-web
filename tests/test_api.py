@@ -156,11 +156,24 @@ def test_lock_y_limite_diario(client):
     jobs.release(st, "99002", json.loads((st.root / "locks" / "prepare-99002.json").read_text())["job"])
     # dos preparaciones al día por cliente (TestClient → mismo hash de IP)
     cid = appmod.client_id(type("R", (), {"headers": {}, "client": type("C", (), {"host": "testclient"})()})())
+    # un intento que no llegó a lanzarse no cuenta
+    jj = jobs.create(st, "99002", client=cid)
+    jobs.release(st, "99002", jj["id"])
     for _ in range(2):
         jj = jobs.create(st, "99002", client=cid)
+        jobs.update(st, jj, launched=True)
         jobs.release(st, "99002", jj["id"])
     r = client.post("/api/cities/99002/prepare")
     assert r.status_code == 429 and "al día" in r.json()["detail"]
+
+
+def test_fallo_al_lanzar_no_gasta_cupo(client, monkeypatch):
+    def boom(job_id, st=None):
+        raise PermissionError("403 run.jobs.runWithOverrides")
+    monkeypatch.setattr(jobs, "launch", boom)
+    for _ in range(3):
+        r = client.post("/api/cities/99002/prepare")
+        assert r.status_code == 503 and "403" in r.json()["detail"]
 
 
 def test_cors(client):
