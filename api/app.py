@@ -23,6 +23,7 @@ Local:  QM_STORAGE=local QM_DATA_DIR=data .venv/Scripts/python -m uvicorn api.ap
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import threading
 import time
@@ -41,6 +42,9 @@ from pydantic import BaseModel, Field, field_validator
 from quinzemin import __version__, engine, gtfs_feeds, jobs, prepare, results
 from quinzemin import bundle as qb
 from quinzemin import storage as qs
+
+
+log = logging.getLogger("quinzemin.api")
 
 
 def _env_int(name: str, default: int) -> int:
@@ -259,6 +263,9 @@ def _check_ine(ine: str) -> None:
 # ----------------------------------------------------------------------
 
 class PrepareIn(BaseModel):
+    # Ejemplo válido para la página /docs (por defecto mostraría ["string"], que se rechaza)
+    model_config = {"json_schema_extra": {"examples": [{"gtfs_feeds": [], "gtfs_auto": False},
+                                                       {"gtfs_feeds": ["mdb-795"], "gtfs_auto": True}]}}
     gtfs_feeds: list[str] = Field(default_factory=list, max_length=5,
                                   description="feeds del catálogo (mdb-795) o URLs https")
     gtfs_auto: bool = Field(False, description="añadir los feeds urbanos y regionales que cubren el municipio")
@@ -299,9 +306,11 @@ def _start_job(request: Request, ine: str, body: PrepareIn, kind: str) -> JSONRe
     try:
         jobs.launch(job["id"], st)
     except Exception as e:  # noqa: BLE001
-        jobs.update(st, job, status="error", stage="error", msg=f"No se pudo lanzar: {e}"[:500])
+        reason = f"{type(e).__name__}: {e}"[:500]
+        log.exception("No se pudo lanzar el trabajo %s", job["id"])
+        jobs.update(st, job, status="error", stage="error", msg=f"No se pudo lanzar: {reason}")
         jobs.release(st, ine, job["id"])
-        raise HTTPException(503, detail="No se pudo lanzar la preparación") from None
+        raise HTTPException(503, detail=f"No se pudo lanzar la preparación ({job['id']}): {reason}") from None
     return JSONResponse(_public_job(job), 202)
 
 
