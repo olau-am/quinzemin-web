@@ -346,7 +346,7 @@ def get_job(job_id: str) -> dict:
     if not job_id.replace("-", "").isalnum() or len(job_id) > 40:
         raise HTTPException(422, detail="Identificador no válido")
     try:
-        return _public_job(jobs.get(store(), job_id))
+        return _public_job(jobs.view(jobs.get(store(), job_id)))
     except FileNotFoundError:
         raise HTTPException(404, detail="No existe ese trabajo") from None
 

@@ -184,3 +184,14 @@ def test_cors(client):
     r = client.options("/api/runs", headers={"Origin": "https://malicioso.example",
                                               "Access-Control-Request-Method": "POST"})
     assert "access-control-allow-origin" not in r.headers
+
+
+def test_trabajo_atascado_no_bloquea(client):
+    st = client.st
+    j = jobs.create(st, "99002", client="x")
+    j["created"] = "2026-01-01T00:00:00+00:00"          # hace mucho y nunca pasó de "queued"
+    st.write_json(f"jobs/{j['id']}.json", j)
+    st.write_json("locks/prepare-99002.json", {"job": j["id"], "created": "2026-01-01T00:00:00+00:00"})
+    assert client.get(f"/api/jobs/{j['id']}").json()["status"] == "error"
+    assert jobs.active(st) == []
+    assert client.post("/api/cities/99002/prepare").status_code == 202

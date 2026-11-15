@@ -21,7 +21,12 @@ RUN mkdir -p quinzemin api && touch quinzemin/__init__.py api/__init__.py \
 COPY quinzemin ./quinzemin
 COPY api ./api
 COPY config ./config
-RUN pip install --no-deps .
+# Borrar lo que dejó la instalación con los paquetes vacíos: si no, setuptools reutiliza build/ y
+# deja el __init__.py vacío en site-packages (le parece más nuevo que el real)
+RUN rm -rf build *.egg-info && pip install --no-deps --force-reinstall . \
+    # Comprobación: el paquete instalado (el que usa el comando quinzemin-job) debe estar completo
+    && cd / && python -c "import quinzemin, quinzemin.prepare, quinzemin.jobs, quinzemin.catalog; print('quinzemin', quinzemin.__version__)" \
+    && command -v quinzemin-job
 
 # Usuario sin privilegios
 RUN useradd --create-home --uid 10001 app

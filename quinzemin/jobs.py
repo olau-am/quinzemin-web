@@ -24,6 +24,20 @@ from datetime import UTC, datetime, timedelta
 from quinzemin import storage as qs
 
 LOCK_TTL = timedelta(hours=2)        # un lock más antiguo se considera abandonado (Job caído)
+START_TIMEOUT = timedelta(minutes=10)  # un trabajo que sigue "en cola" pasado esto no llegó a arrancar
+
+
+def stalled(job: dict) -> bool:
+    """El Job falló antes de ejecutar nuestro código (imagen, arranque…): nunca pasó de "queued"."""
+    return job.get("status") == "queued" and         datetime.now(UTC) - datetime.fromisoformat(job["created"]) > START_TIMEOUT
+
+
+def view(job: dict) -> dict:
+    """Estado tal como lo ve un cliente: los trabajos atascados en cola se muestran como error."""
+    if stalled(job):
+        return {**job, "status": "error", "stage": "error",
+                "msg": "El trabajo no llegó a arrancar (ver los registros del Cloud Run Job)"}
+    return job
 
 
 class Busy(RuntimeError):
@@ -62,7 +76,11 @@ def create(st: qs.Storage, ine: str, gtfs_feeds: list[str] | None = None, gtfs_a
     if not st.create_if_absent(_lock_key(ine), _json(lock)):
         current = st.read_json(_lock_key(ine))
         age = datetime.now(UTC) - datetime.fromisoformat(current["created"])
-        if age < LOCK_TTL:
+        try:
+            dead = stalled(get(st, current["job"]))
+        except Exception:  # noqa: BLE001
+            dead = False
+        if age < LOCK_TTL and not dead:
             raise Busy(current["job"])
         st.write_json(_lock_key(ine), lock)          # lock abandonado: se reemplaza
     st.write_json(_key(job["id"]), job)
@@ -105,8 +123,14 @@ def active(st: qs.Storage) -> list[dict]:
             lock = st.read_json(key)
         except Exception:  # noqa: BLE001
             continue
-        if datetime.now(UTC) - datetime.fromisoformat(lock["created"]) < LOCK_TTL:
-            out.append(lock)
+        if datetime.now(UTC) - datetime.fromisoformat(lock["created"]) >= LOCK_TTL:
+            continue
+        try:
+            if stalled(get(st, lock["job"])):
+                continue                     # no bloquea: el Job no llegó a arrancar
+        except Exception:  # noqa: BLE001
+            pass
+        out.append(lock)
     return out
 
 
