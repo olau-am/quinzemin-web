@@ -218,7 +218,8 @@ def get_city(ine: str) -> dict:
         meta = store().read_json(f"cities/{ine}/meta.json")
     except FileNotFoundError:
         m = municipality(ine)
-        return {"ine": ine, "name": m["nombre"], "prepared": False, "allowed": within_limits(m),
+        return {"ine": ine, "name": m["nombre"], "province": m["provincia"], "population": m.get("poblacion"),
+                "prepared": False, "allowed": within_limits(m), "bbox": _catalog_bbox(m),
                 "job": active[0]["job"] if active else None}
     keep = ("ine", "name", "province", "center", "bbox", "population", "population_year", "km2", "services",
             "has_network", "has_transit", "gtfs_sources", "attributions", "prepared_at", "config")
@@ -244,13 +245,21 @@ def city_gtfs_feeds(ine: str) -> list[dict]:
     try:
         bbox = store().read_json(f"cities/{ine}/meta.json")["bbox"]
     except FileNotFoundError:
-        m = municipality(ine)
-        sec = gpd.read_parquet(store().local_path(f"spain/secciones/{m['cpro']}.parquet"))
-        bbox = sec[sec["CUMUN"] == ine].to_crs(4326).total_bounds.tolist()
+        bbox = _catalog_bbox(municipality(ine))
     feeds = gtfs_feeds.feeds_for(store(), bbox, include_inactive=True)
     return [{k: f.get(k) for k in ("id", "provider", "name", "status", "scope", "license_url", "official")}
             | {"nap": gtfs_feeds.is_nap(f), "auto": f["scope"] != "nacional" and f["status"] == "active"}
             for f in feeds]
+
+
+def _catalog_bbox(m: dict) -> list[float] | None:
+    """Rectángulo (lon_min, lat_min, lon_max, lat_max) de un municipio a partir del seccionado del INE."""
+    try:
+        sec = gpd.read_parquet(store().local_path(f"spain/secciones/{m['cpro']}.parquet"))
+    except Exception:  # noqa: BLE001 — sin catálogo de secciones no hay rectángulo
+        return None
+    sec = sec[sec["CUMUN"] == m["ine"]]
+    return [round(v, 5) for v in sec.to_crs(4326).total_bounds.tolist()] if len(sec) else None
 
 
 def _check_ine(ine: str) -> None:

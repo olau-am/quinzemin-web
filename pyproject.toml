@@ -37,7 +37,7 @@ api = [
 ]
 # CLI local con mapa folium (memoria del TFM) y código legacy/
 viz = ["folium>=0.17", "matplotlib>=3.9"]
-dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6", "selenium>=4.20"]
 
 [tool.setuptools.packages.find]
 include = ["quinzemin*", "api*"]

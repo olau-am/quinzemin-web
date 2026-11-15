@@ -36,6 +36,7 @@ no volver a preguntar lo que ya está decidido (§2).**
 | `legacy/` | copia **congelada** del `src/` original para el snapshot de regresión; no editar |
 | `scripts/snapshot_legacy.py` | genera `tests/fixtures/legacy/` (3 modos × 2 vistas) |
 | `scripts/precompute.py` | genera `docs/data/cities/46250/` |
+| `scripts/ui_smoke.py` | prueba de la web con Selenium contra la API local |
 | `tests/` | pytest; `test_regression_legacy.py` compara el motor con el snapshot |
 | `data/` | datos descargados, bundles y salidas locales (gitignored) |
 
@@ -47,8 +48,9 @@ Fases 1 y 2 cerradas: catálogo, preparación (Burjassot 46078 y València 46250
 cartografía y GTFS para cualquier ciudad (`quinzemin/gtfs_feeds.py`: Mobility Database o URL https
 validada contra SSRF; feeds recortados a la zona). Licencias y atribuciones: tabla en README.md;
 `prepare.build_attributions()` las genera en el `meta.json` con la fecha de obtención.
-Fase 3: API, trabajos, Docker y tests hechos y probados en local; falta la puesta en marcha en Google
-Cloud (pasos en DEPLOY.md, los hace el usuario desde la consola). Después: panel de la web (fase 4).
+Fase 3 cerrada y desplegada (bucket quinzemin-datos-1, Job quinzemin-prepare, cloudbuild.yaml; València
+preparada en la nube). Fase 4: web con panel (buscador, parámetros, recalcular, preparar municipios con
+progreso, añadir GTFS, YAML, URL compartible); `?api=http://localhost:8080` para usar la API local.
 Overpass público es lento e inestable: preparar un municipio tarda de 8 a 20 min, casi todo esperando.
 
 ## Repo original
