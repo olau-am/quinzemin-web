@@ -144,13 +144,14 @@ def run(job_id: str, st: qs.Storage | None = None) -> dict:
     st = st or qs.from_env()
     job = get(st, job_id)
     update(st, job, status="running", stage="empezando", pct=1)
-    last = [0.0]
+    last = [0.0, None]       # (momento de la última escritura, etapa escrita)
 
     def progress(stage: str, pct: int, msg: str = "") -> None:
         print(f"[{pct:3d} %] {stage}{': ' + msg if msg else ''}", flush=True)
-        # No escribir en el almacenamiento más de una vez cada 2 s
-        if time.monotonic() - last[0] > 2 or pct >= 100:
-            last[0] = time.monotonic()
+        # Un cambio de etapa se guarda siempre (la siguiente puede tardar minutos, p. ej. esperando
+        # a Overpass); las repeticiones dentro de la misma etapa, como mucho una vez cada 2 s
+        if stage != last[1] or time.monotonic() - last[0] > 2 or pct >= 100:
+            last[0], last[1] = time.monotonic(), stage
             update(st, job, stage=stage, pct=pct, msg=msg)
 
     city_gtfs = config.city_config_path(job["ine"]).exists()

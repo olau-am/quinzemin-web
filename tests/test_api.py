@@ -195,3 +195,13 @@ def test_trabajo_atascado_no_bloquea(client):
     assert client.get(f"/api/jobs/{j['id']}").json()["status"] == "error"
     assert jobs.active(st) == []
     assert client.post("/api/cities/99002/prepare").status_code == 202
+
+
+def test_preparacion_fallida_no_gasta_cupo(client):
+    st = client.st
+    cid = appmod.client_id(type("R", (), {"headers": {}, "client": type("C", (), {"host": "testclient"})()})())
+    for _ in range(2):
+        jj = jobs.create(st, "99002", client=cid)
+        jobs.update(st, jj, launched=True, status="error", msg="Overpass no disponible")
+        jobs.release(st, "99002", jj["id"])
+    assert client.post("/api/cities/99002/prepare").status_code == 202

@@ -302,8 +302,9 @@ def _start_job(request: Request, ine: str, body: PrepareIn, kind: str) -> JSONRe
     if len(jobs.active(st)) >= MAX_ACTIVE_PREPARES:
         raise too_many("Ya hay una preparación en curso; inténtalo en unos minutos", 300)
     since = datetime.now(UTC) - timedelta(days=1)
-    # Solo cuentan los trabajos que llegaron a lanzarse (un fallo al lanzar no gasta el cupo)
-    recent = [j for j in jobs.created_since(st, since) if j.get("launched")]
+    # Solo cuentan los trabajos lanzados que no han fallado (un fallo no gasta el cupo de nadie)
+    recent = [j for j in jobs.created_since(st, since)
+              if j.get("launched") and jobs.view(j).get("status") != "error"]
     if sum(1 for j in recent if j.get("client") == client) >= PREPARES_PER_DAY_IP:
         raise too_many(f"Máximo {PREPARES_PER_DAY_IP} preparaciones al día por persona", 3600)
     if kind == "prepare" and sum(1 for j in recent if j.get("kind", "prepare") == "prepare") >= NEW_CITIES_PER_DAY:

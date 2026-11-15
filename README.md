@@ -4,7 +4,8 @@ Aplicación web de **quinzemin**: para cada sección censal de un municipio espa
 8 servicios básicos (ciudad de los 15 minutos) a pie, por la red peatonal o en transporte público, y lo
 muestra en un mapa coroplético con puntuación 0–100 y prioridad (habitantes × déficit).
 
-> En construcción. Plan y decisiones: [HANDOFF_WEB.md](HANDOFF_WEB.md).
+> Plan y decisiones: [HANDOFF_WEB.md](HANDOFF_WEB.md) · Despliegue: [DEPLOY.md](DEPLOY.md) ·
+> Límite de tamaño y trabajo futuro: [TRABAJO_FUTURO.md](TRABAJO_FUTURO.md).
 
 ## Desarrollo
 
