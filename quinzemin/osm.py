@@ -27,7 +27,9 @@ import numpy as np
 import pandas as pd
 import yaml
 
-TEMPLATE = Path(__file__).resolve().parent.parent / "config" / "osm_services.yaml"
+from quinzemin import config
+
+TEMPLATE = config.CONFIG_DIR / "osm_services.yaml"
 EDU_MIN_CLASSIFIED = 0.85
 
 _P, _S = "primaria", "secundaria"

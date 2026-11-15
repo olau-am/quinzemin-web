@@ -1,9 +1,27 @@
+import os
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-CITIES_DIR = ROOT / "config" / "cities"
+
+
+def _config_dir() -> Path:
+    """
+    Carpeta config/ (YAML de ciudades y plantilla OSM). No va dentro del paquete instalado:
+    QM_CONFIG_DIR si está definida; si no, junto al código fuente (desarrollo) o en el directorio
+    de trabajo (contenedor: /app/config).
+    """
+    if os.environ.get("QM_CONFIG_DIR"):
+        return Path(os.environ["QM_CONFIG_DIR"])
+    for cand in (ROOT / "config", Path.cwd() / "config", Path("/app/config")):
+        if (cand / "osm_services.yaml").exists():
+            return cand
+    return ROOT / "config"
+
+
+CONFIG_DIR = _config_dir()
+CITIES_DIR = CONFIG_DIR / "cities"
 DEFAULT_CITY = "46250"   # València
 
 

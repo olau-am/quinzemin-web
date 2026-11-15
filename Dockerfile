@@ -9,7 +9,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     # Sin caché de osmnx en disco (el contenedor es efímero)
-    QM_OSM_CACHE=0
+    QM_OSM_CACHE=0 \
+    # YAML de ciudades y plantilla OSM (no van dentro del paquete instalado)
+    QM_CONFIG_DIR=/app/config
 
 WORKDIR /app
 
@@ -25,7 +27,11 @@ COPY config ./config
 # deja el __init__.py vacío en site-packages (le parece más nuevo que el real)
 RUN rm -rf build *.egg-info && pip install --no-deps --force-reinstall . \
     # Comprobación: el paquete instalado (el que usa el comando quinzemin-job) debe estar completo
-    && cd / && python -c "import quinzemin, quinzemin.prepare, quinzemin.jobs, quinzemin.catalog; print('quinzemin', quinzemin.__version__)" \
+    && cd / && python -c "import quinzemin, quinzemin.prepare, quinzemin.jobs, quinzemin.catalog, quinzemin.osm; \
+from quinzemin import config, osm; \
+assert config.city_config_path('46250').exists(), config.CITIES_DIR; \
+assert osm.TEMPLATE.exists(), osm.TEMPLATE; \
+print('quinzemin', quinzemin.__version__, '· config en', config.CONFIG_DIR)" \
     && command -v quinzemin-job
 
 # Usuario sin privilegios
