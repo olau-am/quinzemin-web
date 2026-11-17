@@ -193,6 +193,7 @@
 
   function setGeometry(geo, fit) {
     if (state.layer) map.removeLayer(state.layer);
+    state.geo = geo;
     state.layer = L.geoJSON(geo, {
       style: styleFor,
       onEachFeature: function (f, lyr) {
@@ -254,6 +255,7 @@
     recolor();
     buildEmojis();
     renderLegend();
+    $("qm-capture").disabled = !state.layer;
   }
 
   // ------------------------------------------------------------------
@@ -548,8 +550,9 @@
   function clearMap(message) {
     if (state.layer) map.removeLayer(state.layer);
     if (state.emojis) map.removeLayer(state.emojis);
-    state.layer = state.emojis = state.data = null;
+    state.layer = state.emojis = state.data = state.geo = null;
     state.runHash = null;
+    $("qm-capture").disabled = true;
     setYaml();
     setAttribution('<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>');
     $("qm-legend-body").innerHTML = '<div class="qm-title">Sin datos</div><div class="qm-sub">' + esc(message) + "</div>";
@@ -725,6 +728,247 @@
     if (li) { ev.preventDefault(); pick(results[+li.dataset.i]); }
   });
   input.addEventListener("blur", function () { setTimeout(function () { list.hidden = true; }, 150); });
+
+  // ------------------------------------------------------------------
+  // Captura del mapa (PNG): municipio entero centrado + leyenda + créditos
+  // ------------------------------------------------------------------
+  // Lienzo lógico de 1600 × 1000 dibujado al doble de resolución (3200 × 2000 px), con teselas un
+  // nivel de zoom por encima para que el mapa base salga nítido. Se compone a mano (sin librerías):
+  // las teselas de OSM admiten CORS, así que el lienzo no queda "contaminado" y se puede exportar.
+  var CAP = { W: 1600, H: 1000, LW: 440, PAD: 40, SCALE: 2, FOOT: 34 };
+  var FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+
+  function slug(s) {
+    return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+  function numTag(x) { return String(x).replace(".", "_"); }
+
+  // quinzemin_valencia_red-800m_puntuacion_k2[_sin-cul][_w-sal2][_2026-11-16].png
+  function captureName() {
+    var d = state.data, p = d.params;
+    var mode = { distance: "linea-recta", network: "red", transit: "transporte" }[p.mode];
+    var thr = p.mode === "transit" ? p.time_minutes + "min" : p.distance_m + "m";
+    var view = p.view === "count" ? "num-servicios" : state.legendView === "prio" ? "prioridad" : "puntuacion";
+    var parts = ["quinzemin", slug(d.city.name.split("/")[0]), mode + "-" + thr, view];
+    if (p.view === "score") parts.push("k" + numTag(p.decay));
+    var used = {};
+    p.services.forEach(function (s) { used[s.id] = s.weight; });
+    var all = (state.city && state.city.services) || d.services;
+    var off = all.filter(function (s) { return !(s.id in used); }).map(function (s) { return s.id.slice(0, 3); });
+    var w = p.services.filter(function (s) { return s.weight !== 1; })
+      .map(function (s) { return s.id.slice(0, 3) + numTag(s.weight); });
+    if (off.length) parts.push("sin-" + off.join("-"));
+    if (w.length) parts.push("w-" + w.join("-"));
+    parts.push(new Date().toISOString().slice(0, 10));
+    return parts.join("_") + ".png";
+  }
+
+  function stripHtml(h) {
+    var t = document.createElement("div");
+    t.innerHTML = h || "";
+    return (t.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  function loadTile(z, x, y) {
+    return new Promise(function (resolve) {
+      var n = Math.pow(2, z), img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = function () { resolve({ img: img, x: x, y: y }); };
+      img.onerror = function () { resolve(null); };
+      img.src = "https://tile.openstreetmap.org/" + z + "/" + (((x % n) + n) % n) + "/" + y + ".png";
+    });
+  }
+
+  function captureMap() {
+    var C = CAP, MW = C.W - C.LW, MH = C.H - C.FOOT, crs = L.CRS.EPSG3857;
+    var d = state.data, p = d.params, b = state.layer.getBounds();
+
+    // Zoom entero más alto con el que el municipio cabe en la zona del mapa
+    var z = 18;
+    for (; z > 3; z--) {
+      var nw = crs.latLngToPoint(b.getNorthWest(), z), se = crs.latLngToPoint(b.getSouthEast(), z);
+      if (se.x - nw.x <= MW - 2 * C.PAD && se.y - nw.y <= MH - 2 * C.PAD) break;
+    }
+    var mid = crs.latLngToPoint(b.getCenter(), z);
+    var ox = mid.x - MW / 2, oy = mid.y - MH / 2;          // origen de la zona del mapa (px lógicos a zoom z)
+    var zt = z + 1, k = 256 / C.SCALE;                       // teselas a zoom z+1, 128 px lógicos cada una
+    var nT = Math.pow(2, zt), jobs = [];
+    for (var ty = Math.max(0, Math.floor(oy / k)); ty <= Math.min(nT - 1, Math.floor((oy + MH) / k)); ty++)
+      for (var tx = Math.floor(ox / k); tx <= Math.floor((ox + MW) / k); tx++) jobs.push(loadTile(zt, tx, ty));
+
+    return Promise.all(jobs).then(function (tiles) {
+      var cv = document.createElement("canvas");
+      cv.width = C.W * C.SCALE; cv.height = C.H * C.SCALE;
+      var ctx = cv.getContext("2d");
+      ctx.scale(C.SCALE, C.SCALE);
+      ctx.fillStyle = "#f2efe9";
+      ctx.fillRect(0, 0, C.W, C.H);
+
+      // Mapa base y secciones, recortados a la zona del mapa
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, MW, MH); ctx.clip();
+      var ok = 0;
+      tiles.forEach(function (t) { if (t) { ok++; ctx.drawImage(t.img, t.x * k - ox, t.y * k - oy, k, k); } });
+      state.geo.features.forEach(function (f) {
+        var g = f.geometry, a = d.areas[f.properties.area_id];
+        var polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+        ctx.beginPath();
+        polys.forEach(function (rings) {
+          rings.forEach(function (ring) {
+            ring.forEach(function (pt, i) {
+              var q = crs.latLngToPoint(L.latLng(pt[1], pt[0]), z);
+              if (i) ctx.lineTo(q.x - ox, q.y - oy); else ctx.moveTo(q.x - ox, q.y - oy);
+            });
+            ctx.closePath();
+          });
+        });
+        ctx.globalAlpha = a ? 0.65 : 0.25;
+        ctx.fillStyle = a ? fillFor(a) : "#9aa0a6";
+        ctx.fill("evenodd");
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = "#555"; ctx.lineWidth = 0.6; ctx.stroke();
+      });
+      ctx.restore();
+
+      drawCredits(ctx, MW, MH, C);
+      drawLegendPanel(ctx, MW, C, d, p);
+      return { canvas: cv, tiles: ok, total: tiles.length };
+    });
+  }
+
+  function wrapLines(ctx, text, width) {
+    var words = String(text).split(" "), lines = [], line = "";
+    words.forEach(function (w) {
+      var t = line ? line + " " + w : w;
+      if (ctx.measureText(t).width > width && line) { lines.push(line); line = w; } else line = t;
+    });
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  function drawCredits(ctx, MW, MH, C) {
+    ctx.font = "11px " + FONT;
+    var txt = "Mapa base: © OpenStreetMap contributors · Datos: " + stripHtml(state.data.city.attribution);
+    var lines = wrapLines(ctx, txt, MW - 20);
+    var h = Math.max(C.FOOT, lines.length * 14 + 10);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, C.H - h, MW, h);
+    ctx.fillStyle = "#5f6670";
+    lines.forEach(function (l, i) { ctx.fillText(l, 10, C.H - h + 17 + i * 14); });
+  }
+
+  function drawLegendPanel(ctx, MW, C, d, p) {
+    var st = d.stats, cov = st.coverage, x = MW + 28, w = C.LW - 56, y = 44;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(MW, 0, C.LW, C.H);
+    ctx.fillStyle = "#d7dbe0";
+    ctx.fillRect(MW, 0, 1, C.H);
+
+    function txt(s, size, weight, color, lh) {
+      ctx.font = (weight || "normal") + " " + size + "px " + FONT;
+      ctx.fillStyle = color || "#1f2328";
+      wrapLines(ctx, s, w).forEach(function (l) { ctx.fillText(l, x, y); y += lh || Math.round(size * 1.35); });
+    }
+    function head(s) { y += 6; txt(s.toUpperCase(), 11, "bold", "#5f6670", 20); }
+    function hr() { y += 2; ctx.fillStyle = "#d7dbe0"; ctx.fillRect(x, y - 10, w, 1); y += 8; }
+    function row(left, label, value) {
+      if (left.color) {
+        ctx.fillStyle = left.color; ctx.fillRect(x, y - 14, 18, 18);
+        ctx.strokeStyle = "#666"; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y - 13.5, 17, 17);
+      } else {
+        ctx.font = "16px " + FONT; ctx.fillStyle = "#1f2328"; ctx.fillText(left.emoji, x, y + 1);
+      }
+      ctx.font = "14px " + FONT; ctx.fillStyle = "#1f2328";
+      ctx.fillText(label, x + 28, y);
+      if (value) {
+        ctx.textAlign = "right"; ctx.fillStyle = "#5f6670"; ctx.fillText(value, x + w, y); ctx.textAlign = "left";
+      }
+      y += 24;
+    }
+
+    txt("QUINZEMIN · CIUDAD DE LOS 15 MINUTOS", 11, "bold", "#5f6670", 26);
+    txt(d.city.name, 26, "bold", "#1f2328", 32);
+    var info = [state.city && state.city.province, cov ? fmtInt(st.population.total) + " hab." : "",
+                st.population && st.population.year ? "INE " + st.population.year : ""].filter(Boolean).join(" · ");
+    if (info) txt(info, 13, "normal", "#5f6670", 22);
+    y += 6; hr();
+
+    var modeName = { distance: "Distancia en línea recta", network: "Distancia por la red peatonal",
+                     transit: "Transporte público" }[p.mode];
+    var thr = p.mode === "transit" ? p.time_minutes + " min" : fmtInt(p.distance_m) + " m";
+    txt(modeName + " · " + thr, 15, "bold", "#1f2328", 22);
+    if (p.view === "score" && p.decay > 1) {
+      var far = p.mode === "transit" ? nf2.format(p.time_minutes * p.decay) + " min" : fmtInt(p.distance_m * p.decay) + " m";
+      txt("Crédito parcial hasta " + far, 13, "normal", "#5f6670", 20);
+    }
+    var custom = p.services.filter(function (s) { return s.weight !== 1; });
+    txt(p.services.length + " servicios" + (custom.length ? " · pesos: " + custom.map(function (s) {
+      var sv = d.services.filter(function (x) { return x.id === s.id; })[0];
+      return (sv ? sv.label : s.id) + " ×" + nf2.format(s.weight);
+    }).join(", ") : " · mismo peso"), 13, "normal", "#5f6670", 20);
+    y += 8; hr();
+
+    var n = d.services.length;
+    if (p.view === "count") {
+      head("Nº de servicios accesibles" + (cov ? " · % población" : ""));
+      (st.counts || []).forEach(function (c) {
+        var label = c.score === 0 ? "0 — ninguno" : c.score === n ? n + " — todos" : String(c.score);
+        row({ color: rdylgn(c.score / Math.max(n, 1)) }, label, cov ? fmtPct(c.pct) : "");
+      });
+    } else if (state.legendView === "prio" && st.priority) {
+      head("Prioridad · habitantes × déficit");
+      var cls = st.priority.classes, nc = cls.length;
+      for (var c = nc - 1; c >= 0; c--) {
+        var kk = cls[c];
+        row({ color: PRIO_COLORS[nc][c] }, kk.max == null ? "≥ " + fmtInt(kk.min) : fmtInt(kk.min) + " – " + fmtInt(kk.max),
+            kk.areas + " secciones");
+      }
+    } else {
+      head("Puntuación 0–100" + (cov ? " · % población" : ""));
+      st.bands.forEach(function (bd, i) { row({ color: BAND_COLORS[i] }, bd.label, cov ? fmtPct(bd.pct) : ""); });
+    }
+
+    if (cov) {
+      y += 4; hr();
+      head("Población con acceso");
+      row({ emoji: "✅" }, "Todos los servicios", fmtPct(cov.all));
+      row({ emoji: "⛔" }, "Ningún servicio", fmtPct(cov.none));
+      if (cov.mean_score != null) row({ emoji: "⌀" }, "Puntuación media", nf0.format(cov.mean_score) + " / 100");
+      y += 4;
+      d.services.forEach(function (s) { row({ emoji: s.emoji || "•" }, s.label, fmtPct(cov.per_service[s.id] || 0)); });
+    }
+    if (p.mode === "transit") {
+      y += 6;
+      txt("Solo cuenta lo que se alcanza subiendo a un transporte público; no los trayectos solo a pie.",
+          11, "normal", "#8a6d00", 15);
+    }
+
+    ctx.font = "11px " + FONT; ctx.fillStyle = "#5f6670";
+    var dt = new Date();
+    ctx.fillText("Generado el " + ("0" + dt.getDate()).slice(-2) + "/" + ("0" + (dt.getMonth() + 1)).slice(-2) + "/" +
+                 dt.getFullYear() + " · olau-am.github.io/quinzemin-web", x, C.H - 16);
+  }
+
+  $("qm-capture").addEventListener("click", function () {
+    if (!state.data || !state.geo || !state.layer) return;
+    var btn = this;
+    btn.disabled = true;
+    status("Generando la captura…", "busy");
+    captureMap().then(function (r) {
+      r.canvas.toBlob(function (blob) {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = captureName();
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+        status(r.tiles < r.total ? "Captura descargada (faltan " + (r.total - r.tiles) + " teselas del mapa base)."
+                                 : "Captura descargada: " + a.download);
+      }, "image/png");
+    }).catch(function (e) { status("No se pudo generar la captura: " + errorText(e), "error"); })
+      .then(function () { btn.disabled = false; });
+  });
 
   // ------------------------------------------------------------------
   // Paneles plegables

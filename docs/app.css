@@ -105,6 +105,7 @@ details summary { cursor: pointer; margin: 6px 0; }
 .qm-btn:hover { background: var(--soft); }
 .qm-btn.qm-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); flex: 1; }
 .qm-btn.qm-primary:hover { filter: brightness(1.1); }
+.qm-btn.qm-wide { display: block; width: 100%; margin-top: 6px; }
 .qm-btn:disabled, .qm-btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; pointer-events: none; }
 
 /* Progreso y estado */
