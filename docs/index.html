@@ -69,6 +69,18 @@
           <label for="qm-minutes">Tiempo máximo <output id="qm-minutes-out"></output></label>
           <input id="qm-minutes" name="time_minutes" type="range" min="5" max="60" step="1">
         </div>
+        <div class="qm-field" id="qm-f-transit" hidden>
+          <label for="qm-tmodel">Modelo de transporte</label>
+          <select id="qm-tmodel" name="transit_model">
+            <option value="frequencies">Con esperas y trasbordos</option>
+            <option value="simple">Simplificado (proyecto original)</option>
+          </select>
+          <div id="qm-tmodel-note" class="qm-note"></div>
+          <div class="qm-field" id="qm-f-penalty">
+            <label for="qm-penalty">Penalización por trasbordo <output id="qm-penalty-out"></output></label>
+            <input id="qm-penalty" name="transfer_penalty_min" type="range" min="0" max="15" step="1">
+          </div>
+        </div>
 
         <div class="qm-seg" role="radiogroup" aria-label="Vista del mapa">
           <label><input type="radio" name="view" value="score"> Puntuación 0–100</label>

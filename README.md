@@ -25,6 +25,22 @@ PYTHONIOENCODING=utf-8 .venv/Scripts/python -m quinzemin.prepare 46078 --only-tr
 PYTHONIOENCODING=utf-8 .venv/Scripts/python -m quinzemin.prepare 46250 --gtfs # València (fuentes propias)
 ```
 
+## Modelos de transporte público
+
+En el modo «Transporte» hay dos modelos, los dos basados en frecuencias (dan un tiempo típico,
+sin depender de la hora de salida):
+
+| | Con esperas y trasbordos (predeterminado) | Simplificado (proyecto original) |
+|---|---|---|
+| Espera al subir | en **cada** subida: mitad del intervalo de **esa línea** en esa parada (laborable representativo, 7–21 h) | solo en la primera parada: 16 h / nº de pasos de todas las líneas en todo el feed |
+| Trasbordos | esperan a la nueva línea, + penalización opcional (0–15 min) | sin espera |
+| Trasbordo a pie entre paradas | sí, hasta 250 m | no |
+| Ir andando al servicio | cuenta: tiempo = mínimo entre andar y transporte | no cuenta |
+
+Los municipios preparados antes de este cambio usan el simplificado hasta que se actualiza su
+transporte (botón en la web, `POST /api/cities/{ine}/transit` con `{"refresh": true}` o
+`python -m quinzemin.prepare INE --only-transit` con los mismos feeds).
+
 ## Fuentes de datos y licencias
 
 Cada mapa muestra las atribuciones de los datos que usa y la fecha en que se obtuvieron

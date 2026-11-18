@@ -28,6 +28,7 @@ from quinzemin import population
 
 MODES = ("distance", "network", "transit")
 VIEWS = ("count", "score")
+TRANSIT_MODELS = ("frequencies", "simple")
 
 # Tramos de la vista "score": (límite inferior, etiqueta), de mejor a peor. No son equidistantes:
 # en una ciudad compacta casi todas las áreas superan 80; interesa distinguir quién llega a todo
@@ -79,6 +80,10 @@ class Params:
     max_snap_m: float = 500
     park_access_m: float = 20
     services: list[ServiceParams] | None = None   # None = todos los del bundle con peso 1
+    # Transporte público: "frequencies" = esperas por línea en cada subida (también en los
+    # trasbordos), trasbordos a pie y mínimo con ir andando; "simple" = modelo del proyecto original
+    transit_model: str = "frequencies"
+    transfer_penalty_min: float = 0.0   # penalización por cada trasbordo (solo "frequencies")
 
     @property
     def effective_decay(self) -> float:
@@ -176,9 +181,23 @@ def compute(bundle: Bundle, params: Params) -> Result:
         orig_node, orig_snap = net.snap(cpts)
         out["snap_m"] = np.round(orig_snap, 1)
         diag["snap_m"] = {"origen": _pcts(orig_snap)}
-    reach = None
+    reach, tmodel = None, None
     if mode == "transit":
-        reach = bundle.transit.reachable_matrix(cpts, reach_s, walk_mps, params.max_walk_to_stop_m)
+        if params.transit_model not in TRANSIT_MODELS:
+            raise ValueError(f"Modelo de transporte no válido: {params.transit_model}")
+        tmodel = params.transit_model
+        if tmodel == "frequencies" and not getattr(bundle.transit, "has_frequencies", False):
+            tmodel = "simple"                  # transit.pkl anterior al modelo por frecuencias
+            diag["transit_model_fallback"] = True
+        diag["transit_model"] = tmodel
+        if tmodel == "frequencies":
+            reach = bundle.transit.reachable_matrix_freq(cpts, reach_s, walk_mps, params.max_walk_to_stop_m,
+                                                         params.transfer_penalty_min * 60)
+            if net is not None:                # para el tiempo andando por la red
+                orig_node, orig_snap = net.snap(cpts)
+            diag["walk_faster"] = {}
+        else:
+            reach = bundle.transit.reachable_matrix(cpts, reach_s, walk_mps, params.max_walk_to_stop_m)
 
     svc_params = params.services or [ServiceParams(sid) for sid in bundle.services]
     score    = np.zeros(n, dtype=int)
@@ -197,15 +216,9 @@ def compute(bundle: Bundle, params: Params) -> Result:
         if gdf is not None and len(gdf):
             names = _names(gdf)
             if mode == "network":
-                feat, dnode, doff = net.destinations(
-                    gdf, polygon_access=svc.polygon_access,
-                    access_m=params.park_access_m, max_snap_m=params.max_snap_m,
-                )
+                d, fidx, doff = _network_nearest(net, gdf, svc, params, orig_node, orig_snap)
                 diag.setdefault("snap_m", {})[sid] = _pcts(doff)
                 diag.setdefault("dropped", {})[sid] = int(net.last_dropped)
-                node_dist, node_feat = net.nearest_service(feat, dnode, doff)
-                d    = node_dist[orig_node] + orig_snap
-                fidx = node_feat[orig_node]
                 out[dist_col]   = np.where(np.isfinite(d), np.round(d), 99999).astype(int)
                 out[nombre_col] = _pick(names, fidx)
                 out[ok_col]     = out[dist_col] <= thr
@@ -219,16 +232,24 @@ def compute(bundle: Bundle, params: Params) -> Result:
             elif mode == "transit":
                 secs, fidx = bundle.transit.service_min_times(
                     reach, gdf.geometry.to_numpy(), walk_mps, reach_s, params.max_walk_to_stop_m)
+                if tmodel == "frequencies":
+                    # Mínimo entre ir en transporte y andar (por la red peatonal si la hay)
+                    if net is not None:
+                        wd, wf, _ = _network_nearest(net, gdf, svc, params, orig_node, orig_snap)
+                    else:
+                        wd, wf = _euclid_nearest(cpts, gdf)
+                    wsec = wd / walk_mps
+                    walk_better = (wf >= 0) & (wsec <= reach_s) & (wsec < secs)
+                    secs = np.where(walk_better, wsec, secs)
+                    fidx = np.where(walk_better, wf, fidx)
+                    diag["walk_faster"][sid] = int(walk_better.sum())
                 out[dist_col]   = np.where(np.isfinite(secs), np.round(secs / 60), 9999).astype(int)
                 out[nombre_col] = _pick(names, fidx)
                 out[ok_col]     = secs <= budget_s
                 raw, thr = secs, budget_s
             else:
-                # Distancia euclídea: matriz áreas × elementos; en empate, el primer elemento
-                dmat = shapely.distance(cpts[:, None], gdf.geometry.to_numpy()[None, :])
-                dmat[np.isnan(dmat)] = np.inf          # elementos sin geometría
-                fidx = np.argmin(dmat, axis=1)
-                dist = np.round(dmat[np.arange(n), fidx]).astype(int)
+                d, fidx = _euclid_nearest(cpts, gdf)
+                dist = np.round(d).astype(int)
                 out[dist_col]   = dist
                 out[nombre_col] = _pick(names, fidx)
                 out[ok_col]     = dist <= thr
@@ -255,6 +276,22 @@ def compute(bundle: Bundle, params: Params) -> Result:
     stats["areas_ok"] = per_svc_areas
     stats["diagnostics"] = diag
     return Result(table=out, stats=stats, params=params)
+
+
+def _network_nearest(net, gdf, svc, params, orig_node, orig_snap):
+    """Distancia por la red peatonal (m) e índice del elemento más cercano, por área."""
+    feat, dnode, doff = net.destinations(gdf, polygon_access=svc.polygon_access,
+                                         access_m=params.park_access_m, max_snap_m=params.max_snap_m)
+    node_dist, node_feat = net.nearest_service(feat, dnode, doff)
+    return node_dist[orig_node] + orig_snap, node_feat[orig_node], doff
+
+
+def _euclid_nearest(cpts, gdf):
+    """Distancia en línea recta (m) e índice del elemento más cercano; en empate, el primero."""
+    dmat = shapely.distance(cpts[:, None], gdf.geometry.to_numpy()[None, :])
+    dmat[np.isnan(dmat)] = np.inf          # elementos sin geometría
+    fidx = np.argmin(dmat, axis=1)
+    return dmat[np.arange(len(cpts)), fidx], fidx
 
 
 def _pcts(arr) -> dict:

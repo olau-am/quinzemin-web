@@ -82,9 +82,26 @@ try:
     wait_idle()
     d.find_element(By.CSS_SELECTOR, "input[name=qm-lview][value=prio]").click()
     time.sleep(0.5)
-    print("3 transit+prio:", text("#qm-subtitle"), "| aviso:", "pesimistas" in text("#qm-legend-body"))
+    print("3 transit+prio:", text("#qm-subtitle"), "| modelo:", d.find_element(By.ID, "qm-tmodel").get_attribute("value"),
+          "| aviso:", "menor entre ir andando" in text("#qm-legend-body"), "| tm en URL:", "tm=frequencies" in d.current_url)
     shot("3_transit_prio")
     check_console("transit")
+
+    # 3b) Modelo simplificado y penalización por trasbordo
+    from selenium.webdriver.support.ui import Select
+    Select(d.find_element(By.ID, "qm-tmodel")).select_by_value("simple")
+    print("  penalización oculta en simplificado:", not d.find_element(By.ID, "qm-f-penalty").is_displayed())
+    d.find_element(By.ID, "qm-run").click()
+    w.until(EC.text_to_be_present_in_element((By.ID, "qm-legend-body"), "Modelo simplificado"))
+    wait_idle()
+    print("3b simplificado:", "tm=simple" in d.current_url)
+    Select(d.find_element(By.ID, "qm-tmodel")).select_by_value("frequencies")
+    d.execute_script("var r=document.getElementById('qm-penalty'); r.value=5; r.dispatchEvent(new Event('input',{bubbles:true}));")
+    d.find_element(By.ID, "qm-run").click()
+    w.until(EC.text_to_be_present_in_element((By.ID, "qm-legend-body"), "5 min por trasbordo"))
+    wait_idle()
+    print("  con esperas +5 min:", "tp=5" in d.current_url, "|", d.find_element(By.ID, "qm-penalty-out").text)
+    check_console("modelos")
 
     # 4) URL compartida: abrir en otra carga y comprobar que reproduce el resultado
     url = d.current_url
@@ -92,7 +109,8 @@ try:
     d.get(url)
     w.until(EC.text_to_be_present_in_element((By.ID, "qm-subtitle"), "transporte público"))
     wait_idle()
-    print("4 URL compartida OK:", d.find_element(By.CSS_SELECTOR, "input[name=mode][value=transit]").is_selected())
+    print("4 URL compartida OK:", d.find_element(By.CSS_SELECTOR, "input[name=mode][value=transit]").is_selected(),
+          "| penalización restaurada:", d.find_element(By.ID, "qm-penalty").get_attribute("value") == "5")
 
     # 5) Buscar y cambiar a Burjassot (preparado)
     s = d.find_element(By.ID, "qm-search")

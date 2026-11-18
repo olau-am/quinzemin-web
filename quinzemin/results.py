@@ -30,6 +30,7 @@ def params_to_dict(p: Params) -> dict:
         "decay": p.decay, "walking_speed_mpm": p.walking_speed_mpm,
         "max_walk_to_stop_m": p.max_walk_to_stop_m, "max_snap_m": p.max_snap_m,
         "park_access_m": p.park_access_m,
+        "transit_model": p.transit_model, "transfer_penalty_min": p.transfer_penalty_min,
         "services": [{"id": s.id, "weight": s.weight, "distance_m": s.distance_m} for s in p.services or []],
     }
 
@@ -50,10 +51,13 @@ def normalize(p: Params) -> Params:
         d["distance_m"] = 0               # en transit no se usa
         for s in d["services"]:
             s["distance_m"] = None
+        if d["transit_model"] == "simple":
+            d["transfer_penalty_min"] = 0.0
     else:
         d["time_minutes"] = 0
+        d["transit_model"], d["transfer_penalty_min"] = "frequencies", 0.0   # fuera de transit no cuentan
     for k in ("distance_m", "time_minutes", "decay", "walking_speed_mpm", "max_walk_to_stop_m",
-              "max_snap_m", "park_access_m"):
+              "max_snap_m", "park_access_m", "transfer_penalty_min"):
         d[k] = float(d[k])
     for s in d["services"]:
         s["weight"] = float(s["weight"])
@@ -131,6 +135,7 @@ def to_yaml(bundle: Bundle, p: Params) -> str:
             "mode": p.mode, "distance_m": p.distance_m, "time_minutes": p.time_minutes,
             "walking_speed_mpm": p.walking_speed_mpm, "max_walk_to_stop_m": p.max_walk_to_stop_m,
             "scoring": {"decay": p.decay},
+            "transit_model": p.transit_model, "transfer_penalty_min": p.transfer_penalty_min,
             "network": {"max_snap_m": p.max_snap_m, "park_access_m": p.park_access_m},
         },
         "map": {"view": p.view},

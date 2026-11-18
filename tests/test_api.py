@@ -205,3 +205,30 @@ def test_preparacion_fallida_no_gasta_cupo(client):
         jobs.update(st, jj, launched=True, status="error", msg="Overpass no disponible")
         jobs.release(st, "99002", jj["id"])
     assert client.post("/api/cities/99002/prepare").status_code == 202
+
+
+def test_parametros_transporte(client):
+    r = client.post("/api/runs", json={"ine": INE, "mode": "distance", "transit_model": "horario"})
+    assert r.status_code == 422
+    r = client.post("/api/runs", json={"ine": INE, "mode": "distance", "transfer_penalty_min": 30})
+    assert r.status_code == 422
+    assert client.get(f"/api/cities/{INE}").json()["transit_models"] == []
+
+
+def test_refresh_transporte(client):
+    assert client.post(f"/api/cities/{INE}/transit", json={}).status_code == 422
+    r = client.post(f"/api/cities/{INE}/transit", json={"refresh": True})
+    assert r.status_code == 202 and r.json()["refresh"] is True and r.json()["kind"] == "transit"
+
+
+def test_clave_de_cache_por_modelo():
+    from quinzemin import results
+    from quinzemin.engine import Params, ServiceParams
+    s = [ServiceParams("a")]
+    h = lambda **kw: results.params_hash("99001", Params(services=s, **kw), "v1")
+    assert h(mode="transit", transit_model="frequencies") != h(mode="transit", transit_model="simple")
+    assert h(mode="transit", transit_model="frequencies", transfer_penalty_min=2) != \
+        h(mode="transit", transit_model="frequencies")
+    # en el simplificado la penalización no existe; fuera de transit, el modelo no cuenta
+    assert h(mode="transit", transit_model="simple", transfer_penalty_min=2) == h(mode="transit", transit_model="simple")
+    assert h(mode="network", transit_model="simple") == h(mode="network", transit_model="frequencies")

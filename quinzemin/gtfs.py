@@ -1,13 +1,21 @@
 """
-Motor de accesibilidad por transporte público usando datos GTFS.
+Motor de accesibilidad por transporte público usando datos GTFS. Dos modelos, los dos basados en
+frecuencias (tiempo de viaje "típico", independiente de la hora de salida):
 
-Modelo frequency-based (sin dependencia de horario): el tiempo de espera en
-cada parada de origen se estima como headway/2, donde headway = 16h / nº de
-expediciones/día. Una vez embarcado, los trasbordos se contabilizan solo como
-tiempo de viaje entre paradas (sin espera adicional). Esto da un tiempo de
-viaje "típico" independiente de la hora de salida.
+1. Por frecuencias de línea (reachable_matrix_freq, el predeterminado en la web)
+   - Grafo con nodos parada y parada-línea (ruta + sentido). Cada subida, también en los
+     trasbordos, espera la mitad del intervalo de esa línea en esa parada, calculado con las
+     salidas de un laborable representativo (mar–jue con más viajes según calendar.txt y
+     calendar_dates.txt) en la franja 07–21 h.
+   - Los trasbordos pueden sumar una penalización fija y se puede andar entre paradas a ≤ 250 m.
+   - El motor (engine.py) toma el mínimo entre este tiempo e ir andando al servicio.
 
-Mismo modelo que quinzemin/src/gtfs.py (legacy/gtfs.py), reescrito para que sea rápido:
+2. Simplificado (reachable_matrix): el del proyecto original (legacy/gtfs.py). Espera solo en la
+   parada de origen, headway = 16 h / nº de filas de stop_times de la parada en todo el feed;
+   los trasbordos no tienen espera (las aristas de todas las líneas se funden) y no se puede
+   andar entre paradas. Se conserva para reproducir los resultados originales.
+
+Modelo simplificado reescrito para que sea rápido (mismos resultados que legacy/gtfs.py):
   - el grafo se construye con operaciones vectorizadas y se queda con la arista más
     rápida entre cada par de paradas (las demás no cambian ningún camino mínimo);
   - reachable_matrix(): un Dijkstra de scipy para todos los centroides a la vez, con un
@@ -26,8 +34,128 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import dijkstra
 from shapely import STRtree
 
-DAY_S = 16 * 3600        # horas de servicio supuestas para el headway
+DAY_S = 16 * 3600        # horas de servicio supuestas para el headway (modelo simplificado)
 MAX_HOP_S = 3600         # tramos entre paradas consecutivas más largos se descartan
+
+# Modelo por frecuencias de línea
+WINDOW_S = (7 * 3600, 21 * 3600)   # franja en la que se cuentan las salidas de cada línea
+MIN_WAIT_S = 30                    # espera mínima al subir
+TRANSFER_MAX_M = 250               # trasbordo a pie entre paradas a esta distancia como mucho
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def _read_optional(z: zipfile.ZipFile, name: str) -> pd.DataFrame | None:
+    """Fichero opcional de un GTFS (trips, calendar…) como texto, con cabeceras y valores recortados."""
+    n = next((x for x in z.namelist() if x.split("/")[-1] == name), None)
+    if n is None:
+        return None
+    with z.open(n) as fh:
+        df = pd.read_csv(fh, dtype=str, encoding="utf-8-sig").rename(columns=str.strip)
+    return _strip(df)
+
+
+def _representative_day(cal: pd.DataFrame | None, cdates: pd.DataFrame | None,
+                        trips: pd.DataFrame) -> tuple[str | None, set | None]:
+    """
+    Laborable típico del feed: el martes, miércoles o jueves de su vigencia con más viajes
+    activos (calendar.txt + excepciones de calendar_dates.txt). Devuelve (fecha AAAAMMDD,
+    service_id activos), o (None, None) si el feed no trae calendario (se usan todos los viajes).
+    """
+    if "service_id" not in trips:
+        return None, None
+    n_by_svc = trips["service_id"].value_counts()
+    has_cal = cal is not None and {"service_id", "start_date", "end_date"} <= set(cal.columns) and len(cal)
+    has_cd = cdates is not None and {"service_id", "date", "exception_type"} <= set(cdates.columns) and len(cdates)
+    if has_cal:
+        c_start = pd.to_datetime(cal["start_date"], format="%Y%m%d", errors="coerce")
+        c_end = pd.to_datetime(cal["end_date"], format="%Y%m%d", errors="coerce")
+        start, end = c_start.min(), c_end.max()
+    elif has_cd:
+        dd = pd.to_datetime(cdates["date"], format="%Y%m%d", errors="coerce")
+        start, end = dd.min(), dd.max()
+    else:
+        return None, None
+    if pd.isna(start) or pd.isna(end):
+        return None, None
+    end = min(end, start + pd.Timedelta(days=370))
+    cand = pd.date_range(start, end)
+    mid = cand[cand.dayofweek.isin([1, 2, 3])]
+    cand = mid if len(mid) else cand
+    by_date = {d: g for d, g in cdates.groupby("date")} if has_cd else {}
+    best = (0, None, None)
+    for dt in cand:
+        active = set()
+        if has_cal:
+            col = _WEEKDAYS[dt.dayofweek]
+            on = cal[col].eq("1") if col in cal else pd.Series(False, index=cal.index)
+            active = set(cal.loc[on & (c_start <= dt) & (dt <= c_end), "service_id"])
+        ds = dt.strftime("%Y%m%d")
+        if ds in by_date:
+            g = by_date[ds]
+            active |= set(g.loc[g["exception_type"] == "1", "service_id"])
+            active -= set(g.loc[g["exception_type"] == "2", "service_id"])
+        n = int(n_by_svc.reindex(list(active)).fillna(0).sum())
+        if n > best[0]:
+            best = (n, ds, active)
+    return (best[1], best[2]) if best[0] > 0 else (None, None)
+
+
+def _build_frequencies(times: pd.DataFrame, sid_idx: pd.Series, trips_l: list, days: dict,
+                       stop_xy: np.ndarray) -> dict | None:
+    """
+    Estructuras del modelo por frecuencias a partir de los horarios del día representativo:
+      rs_stop[r]          parada de cada nodo parada-línea (línea = ruta + sentido)
+      rs_wait[r]          espera media al subir = intervalo / 2 en la franja WINDOW_S (inf si no hay salidas)
+      ride_a/b/t          viajes entre paradas-línea consecutivas (mediana de tiempos, ≥ 1 s)
+      xfer_a/b/d          pares de paradas a ≤ TRANSFER_MAX_M para trasbordar a pie (distancia en m)
+    """
+    if not trips_l:
+        return None
+    trips = pd.concat(trips_l, ignore_index=True).drop_duplicates("trip_id")
+    t = times.merge(trips, on="trip_id", how="inner")
+    t["s"] = sid_idx.reindex(t["stop_id"]).to_numpy()
+    t = t[t["s"].notna()]
+    if t.empty:
+        return None
+    t = t.sort_values(["trip_id", "_seq"], kind="mergesort").reset_index(drop=True)
+    s = t["s"].to_numpy().astype(np.int64)
+    rs_code, rs_keys = pd.factorize((t["route"] + "#" + pd.Series(s, index=t.index).astype(str)).to_numpy())
+    rs_stop = np.zeros(len(rs_keys), dtype=np.int64)
+    rs_stop[rs_code] = s
+
+    trip = t["trip_id"].to_numpy()
+    same = trip[1:] == trip[:-1]
+    dep, arr = t["_dep"].to_numpy(), t["_arr"].to_numpy()
+    tt = (arr[1:] - dep[:-1])[same]
+    a, b = rs_code[:-1][same], rs_code[1:][same]
+    ok = (tt >= 0) & (tt <= MAX_HOP_S) & (a != b)
+    ride = pd.DataFrame({"a": a[ok], "b": b[ok], "t": tt[ok]}).groupby(["a", "b"], as_index=False)["t"].median()
+    ride["t"] = ride["t"].clip(lower=1.0)
+
+    # Salidas en la franja (la última parada de cada viaje no es una salida)
+    departs = np.zeros(len(t), dtype=bool)
+    departs[:-1] = same
+    in_win = departs & (dep >= WINDOW_S[0]) & (dep < WINDOW_S[1])
+    n_dep = np.bincount(rs_code[in_win], minlength=len(rs_keys))
+    span = WINDOW_S[1] - WINDOW_S[0]
+    with np.errstate(divide="ignore"):
+        rs_wait = np.where(n_dep > 0, np.maximum(MIN_WAIT_S, span / np.maximum(n_dep, 1) / 2), np.inf)
+
+    pts = shapely.points(stop_xy)
+    xa, xb = STRtree(pts).query(pts, predicate="dwithin", distance=TRANSFER_MAX_M)
+    keep = xa != xb
+    xa, xb = xa[keep], xb[keep]
+    xd = shapely.distance(pts[xa], pts[xb])
+
+    lines = pd.Series(t["route"].unique()).nunique()
+    print(f"  Modelo por frecuencias: {lines} líneas, {len(rs_keys)} paradas-línea, {len(ride)} tramos, "
+          f"{len(xa)} trasbordos a pie; día {', '.join(f'{k}={v}' for k, v in days.items() if v) or 'sin calendario'}")
+    return {"rs_stop": rs_stop, "rs_wait": rs_wait.astype(float),
+            "ride_a": ride["a"].to_numpy(np.int64), "ride_b": ride["b"].to_numpy(np.int64),
+            "ride_t": ride["t"].to_numpy(float),
+            "xfer_a": xa.astype(np.int64), "xfer_b": xb.astype(np.int64), "xfer_d": xd.astype(float),
+            "info": {"days": days, "window": "07:00-21:00", "lines": int(lines),
+                     "route_stops": len(rs_keys), "transfer_max_m": TRANSFER_MAX_M}}
 
 
 def _strip(df: pd.DataFrame) -> pd.DataFrame:
@@ -48,7 +176,7 @@ def _hms_seconds(s: pd.Series) -> pd.Series:
 
 
 class TransitGraph:
-    def __init__(self, stop_ids, stop_names, stop_xy, wait_s, edge_a, edge_b, edge_t, utm_crs):
+    def __init__(self, stop_ids, stop_names, stop_xy, wait_s, edge_a, edge_b, edge_t, utm_crs, freq=None):
         self.stop_ids   = np.asarray(stop_ids, dtype=object)   # stop_id con prefijo de feed
         self.stop_names = np.asarray(stop_names, dtype=object)
         self.stop_xy    = np.asarray(stop_xy, dtype=float)      # (n, 2) UTM
@@ -57,6 +185,9 @@ class TransitGraph:
         self.edge_b     = np.asarray(edge_b, dtype=np.int64)
         self.edge_t     = np.asarray(edge_t, dtype=float)       # segundos
         self.utm_crs    = utm_crs
+        # Modelo por frecuencias de línea (None en los transit.pkl anteriores): dict con
+        # rs_stop, rs_wait, ride_a/b/t, xfer_a/b/d e info (ver _build_frequencies)
+        self.freq       = freq
         self._init_index()
 
     def _init_index(self):
@@ -77,6 +208,10 @@ class TransitGraph:
     def n_stops(self) -> int:
         return len(self.stop_ids)
 
+    @property
+    def has_frequencies(self) -> bool:
+        return getattr(self, "freq", None) is not None and len(self.freq["rs_stop"]) > 0
+
     # ------------------------------------------------------------------
     # Carga
     # ------------------------------------------------------------------
@@ -93,13 +228,27 @@ class TransitGraph:
         regionales o nacionales). Un viaje que sale y vuelve a entrar se une por sus paradas
         interiores con el tiempo real entre ellas; solo se pierden trasbordos fuera de la zona.
         """
-        stops_l, times_l = [], []
+        stops_l, times_l, trips_l, days = [], [], [], {}
         for src in sources:
             prefix = src["id"] + "_"
             print(f"  Leyendo {src.get('label', src['id'])}: {src['path']}")
             with zipfile.ZipFile(src["path"]) as z:
                 def member(name, z=z):
                     return next(n for n in z.namelist() if n.split("/")[-1] == name)
+                trips = _read_optional(z, "trips.txt")
+                if trips is not None and "trip_id" in trips:
+                    day, active = _representative_day(_read_optional(z, "calendar.txt"),
+                                                      _read_optional(z, "calendar_dates.txt"), trips)
+                    days[src["id"]] = day
+                    if active is not None:
+                        trips = trips[trips["service_id"].isin(active)]
+                    for c in ("route_id", "direction_id"):
+                        if c not in trips:
+                            trips[c] = ""
+                    trips_l.append(pd.DataFrame({
+                        "trip_id": prefix + trips["trip_id"],
+                        "route": prefix + trips["route_id"].fillna("") + "|" + trips["direction_id"].fillna(""),
+                    }))
                 stops = _strip(pd.read_csv(z.open(member("stops.txt")), dtype=str,
                                            encoding="utf-8-sig").rename(columns=str.strip)).fillna("")
                 if clip is not None:
@@ -168,7 +317,8 @@ class TransitGraph:
 
         print(f"  Grafo combinado: {len(stop_ids)} paradas, {len(edges)} aristas "
               f"({n_raw} tramos; {len(sources)} {'fuente' if len(sources) == 1 else 'fuentes'})")
-        return cls(stop_ids, names, stop_xy, wait, edges["a"], edges["b"], edges["t"], utm_crs)
+        freq = _build_frequencies(times, sid_idx, trips_l, days, stop_xy)
+        return cls(stop_ids, names, stop_xy, wait, edges["a"], edges["b"], edges["t"], utm_crs, freq=freq)
 
     # ------------------------------------------------------------------
     # Algoritmo principal
@@ -193,6 +343,54 @@ class TransitGraph:
         w = np.concatenate([self.edge_t, start])
         csr = coo_matrix((w, (rows, cols)), shape=(n_s + n_o, n_s + n_o)).tocsr()
         dist = dijkstra(csr, directed=True, indices=np.arange(n_s, n_s + n_o), limit=budget_s)
+        dist = dist[:, :n_s]
+        dist[dist >= budget_s] = np.inf
+        return dist
+
+    def reachable_matrix_freq(self, origins, budget_s: float, walk_mps: float, max_walk_m: float,
+                              transfer_penalty_s: float = 0.0) -> np.ndarray:
+        """
+        Como reachable_matrix, pero con el modelo por frecuencias de línea: cada subida (también
+        en los trasbordos) espera la mitad del intervalo de esa línea en esa parada; los trasbordos
+        suman además transfer_penalty_s y se puede andar entre paradas cercanas. Una parada cuenta
+        como alcanzada solo después de haber viajado (se llega a ella bajando de un vehículo).
+        """
+        f = self.freq
+        origins = np.asarray(getattr(origins, "values", origins))
+        n_o, n_s, n_r = len(origins), self.n_stops, len(f["rs_stop"])
+        eps = 1e-6
+        S, R, O = 0, n_s, n_s + n_r                     # desplazamiento de cada tipo de nodo
+
+        # Un nodo parada-línea significa "he llegado a esta parada en un vehículo de esta línea".
+        # Subir se modela junto con el primer tramo: subir en a (esperar) y viajar a → b. Así no se
+        # puede "subir y bajar" en la misma parada sin viajar.
+        ride = pd.DataFrame({"a": f["ride_a"], "b": f["ride_b"], "t": f["ride_t"]})
+        ride["wait"] = f["rs_wait"][ride["a"].to_numpy()]
+        ride["s"] = f["rs_stop"][ride["a"].to_numpy()]
+        board = ride[np.isfinite(ride["wait"])]
+
+        # Origen → (subir en una parada a ≤ max_walk_m) → siguiente parada de esa línea
+        oi, si = self._tree.query(origins, predicate="dwithin", distance=max_walk_m)
+        walk = shapely.distance(origins[oi], self._geoms[si]) / walk_mps
+        first = pd.DataFrame({"o": oi, "s": si, "w": walk}).merge(board, on="s")
+        first["c"] = first["w"] + first["wait"] + first["t"]
+        first = first[first["c"] < budget_s]
+
+        edges = pd.concat([
+            pd.DataFrame({"i": O + first["o"], "j": R + first["b"], "c": first["c"]}),            # 1.ª subida
+            pd.DataFrame({"i": R + ride["a"], "j": R + ride["b"], "c": ride["t"]}),               # seguir
+            pd.DataFrame({"i": R + np.arange(n_r), "j": S + f["rs_stop"], "c": eps}),             # bajar
+            pd.DataFrame({"i": S + board["s"], "j": R + board["b"],                              # trasbordo
+                          "c": board["wait"] + transfer_penalty_s + board["t"]}),
+            pd.DataFrame({"i": S + f["xfer_a"], "j": S + f["xfer_b"],                            # a pie
+                          "c": np.maximum(f["xfer_d"] / walk_mps, eps)}),
+        ], ignore_index=True)
+        # coo_matrix suma las aristas repetidas: quedarse con la más corta de cada par
+        edges = edges.groupby(["i", "j"], as_index=False)["c"].min()
+        n = n_s + n_r + n_o
+        csr = coo_matrix((edges["c"].to_numpy(float), (edges["i"].to_numpy(), edges["j"].to_numpy())),
+                         shape=(n, n)).tocsr()
+        dist = dijkstra(csr, directed=True, indices=np.arange(O, O + n_o), limit=budget_s)
         dist = dist[:, :n_s]
         dist[dist >= budget_s] = np.inf
         return dist

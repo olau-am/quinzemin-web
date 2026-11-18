@@ -316,12 +316,29 @@ def build_attributions(cfg: dict | None, services: list[dict], gtfs_info: list[d
     return uniq
 
 
+def transit_models(transit) -> list[str]:
+    """Modelos de transporte que admite el grafo ("frequencies" solo en los construidos con esta versión)."""
+    if transit is None:
+        return []
+    return ["frequencies", "simple"] if getattr(transit, "has_frequencies", False) else ["simple"]
+
+
 def update_transit(ine: str, st: qs.Storage | None = None, refs: list[str] | None = None, auto: bool = False,
-                   city_gtfs: bool = False, progress=_print_progress) -> dict:
-    """Añade o sustituye el transporte público de un municipio ya preparado (sin repetir OSM)."""
+                   city_gtfs: bool = False, progress=_print_progress, refresh: bool = False) -> dict:
+    """
+    Añade o sustituye el transporte público de un municipio ya preparado (sin repetir OSM).
+    refresh: reconstruir el grafo con los mismos feeds que ya tiene (p. ej. para pasar un bundle
+    anterior al modelo por frecuencias de línea).
+    """
     st = st or qs.from_env()
     base = f"cities/{ine}"
     meta = st.read_json(f"{base}/meta.json")
+    if refresh:
+        cur = meta.get("gtfs_sources") or []
+        if not cur:
+            raise PrepareError("Esta ciudad no tiene transporte público que actualizar")
+        city_gtfs = city_gtfs or any(g["source"] == "city" for g in cur)
+        refs = [g["id"] if g["source"] == "mobilitydatabase" else g["url"] for g in cur if g["source"] != "city"]
     areas = gpd.read_parquet(st.local_path(f"{base}/areas.parquet"))
     cfg_path = config.city_config_path(ine)
     cfg = config.load(cfg_path) if cfg_path.exists() else None
@@ -335,6 +352,8 @@ def update_transit(ine: str, st: qs.Storage | None = None, refs: list[str] | Non
         transit, info = build_transit(feeds, areas.crs, Path(td), clip)
     st.write_bytes(f"{base}/transit.pkl", pickle.dumps(transit, protocol=pickle.HIGHEST_PROTOCOL))
     meta["has_transit"], meta["gtfs_sources"] = True, info
+    meta["transit_models"] = transit_models(transit)
+    meta["transit_updated_at"] = datetime.now(UTC).isoformat(timespec="seconds")
     if cfg:   # recalcular también el organismo de cada servicio (bundles anteriores a source_name)
         by_id = {s["id"]: s for s in cfg["services"]}
         for s in meta["services"]:
@@ -428,6 +447,7 @@ def prepare(ine: str, st: qs.Storage | None = None, progress=_print_progress, ne
         "services": [{"id": s["id"], "label": s["label"], "emoji": s["emoji"], "source": s["source"],
                       "polygon_access": s["polygon_access"], "features": len(s["features"])} for s in services],
         "has_network": net is not None, "has_transit": transit is not None,
+        "transit_models": transit_models(transit),
         "gtfs_sources": gtfs_info,
         "attributions": attributions, "config": "city" if cfg else "osm",
         "report": {"areas": area_report, **svc_report,

@@ -120,6 +120,9 @@ def params_from_config(cfg: dict) -> Params:
         max_walk_to_stop_m=a.get("max_walk_to_stop_m", 500),
         max_snap_m=net.get("max_snap_m", 500),
         park_access_m=net.get("park_access_m", 20),
+        # Sin indicarlo, el modelo de transporte del proyecto original (reproduce sus resultados)
+        transit_model=a.get("transit_model", "simple"),
+        transfer_penalty_min=float(a.get("transfer_penalty_min", 0)),
         services=[ServiceParams(s["id"], float(s.get("weight", 1)), s.get("distance_m"))
                   for s in cfg["services"]],
     )

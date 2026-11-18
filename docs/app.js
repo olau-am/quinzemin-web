@@ -135,6 +135,7 @@
     var parts = ["ine=" + state.city.ine, "mode=" + p.mode, "view=" + p.view,
                  "d=" + p.distance_m, "t=" + p.time_minutes, "k=" + p.decay,
                  "s=" + p.services.map(function (s) { return s.id + ":" + s.weight; }).join(",")];
+    if (p.mode === "transit") parts.push("tm=" + (p.transit_model || "frequencies"), "tp=" + (p.transfer_penalty_min || 0));
     if (state.runHash) parts.push("run=" + state.runHash);
     settingHash = true;
     history.replaceState(null, "", "#" + parts.join("&"));
@@ -149,6 +150,7 @@
       out.params = {
         mode: h.get("mode"), view: h.get("view") || "score",
         distance_m: +h.get("d") || 800, time_minutes: +h.get("t") || 15, decay: +h.get("k") || 2,
+        transit_model: h.get("tm") || "frequencies", transfer_penalty_min: +h.get("tp") || 0,
         services: (h.get("s") || "").split(",").filter(Boolean).map(function (x) {
           var kv = x.split(":"); return { id: kv[0], weight: kv[1] === undefined ? 1 : +kv[1] };
         })
@@ -291,6 +293,18 @@
   function swatch(c) { return '<span class="qm-sw" style="background:' + c + '"></span>'; }
   function emo(e) { return '<span class="qm-emo">' + e + "</span>"; }
 
+  function transitNote(d) {
+    var diag = (d.stats && d.stats.diagnostics) || {}, used = diag.transit_model || d.params.transit_model;
+    if (used === "frequencies") {
+      var pen = d.params.transfer_penalty_min ? " más " + d.params.transfer_penalty_min + " min por trasbordo" : "";
+      return "Tiempo = el menor entre ir andando y en transporte público, esperando en cada subida la mitad " +
+        "del intervalo de esa línea (laborable, 7–21 h)" + pen + "; trasbordos a pie de hasta 250 m.";
+    }
+    return (diag.transit_model_fallback ? "<b>Datos de transporte antiguos: se ha usado el modelo simplificado.</b> " : "") +
+      "Modelo simplificado: solo cuenta lo que se alcanza subiendo a un transporte (espera media solo en la primera " +
+      "parada, trasbordos sin espera), no los trayectos a pie. Donde hay poco servicio los resultados son pesimistas.";
+  }
+
   function renderLegend() {
     var d = state.data, st = d.stats, p = d.params, cov = st.coverage, html, body = "";
     if (p.view === "count") {
@@ -338,10 +352,7 @@
         body += row(emo(s.emoji || "•"), esc(s.label), fmtPct(cov.per_service[s.id] || 0));
       });
     }
-    if (p.mode === "transit") {
-      body += '<div class="qm-warn">Solo cuenta lo que se alcanza subiendo a un transporte público (con la espera ' +
-        "media de cada parada), no los trayectos solo a pie. Donde hay poco servicio los resultados son pesimistas.</div>";
-    }
+    if (p.mode === "transit") body += '<div class="qm-warn">' + transitNote(d) + "</div>";
     $("qm-legend-body").innerHTML = html + '<div class="qm-collapsible" style="margin-top:6px">' + body + "</div>";
     document.querySelectorAll("input[name=qm-lview]").forEach(function (r) {
       r.addEventListener("change", function () { state.legendView = r.value; recolor(); renderLegend(); });
@@ -356,9 +367,12 @@
   function defaultParams(meta) {
     return {
       mode: meta.has_network ? "network" : "distance", view: "score", distance_m: 800, time_minutes: 15,
-      decay: 2, services: meta.services.map(function (s) { return { id: s.id, weight: 1 }; })
+      decay: 2, services: meta.services.map(function (s) { return { id: s.id, weight: 1 }; }),
+      transit_model: hasFreq(meta) ? "frequencies" : "simple", transfer_penalty_min: 0
     };
   }
+
+  function hasFreq(meta) { return (meta.transit_models || []).indexOf("frequencies") >= 0; }
 
   function available(meta, mode) {
     return mode === "distance" || (mode === "network" && meta.has_network) || (mode === "transit" && meta.has_transit);
@@ -378,6 +392,13 @@
     $("qm-distance").value = p.distance_m;
     $("qm-minutes").value = p.time_minutes;
     $("qm-decay").value = p.decay;
+    var freqOk = hasFreq(meta), tsel = $("qm-tmodel");
+    tsel.querySelector("option[value=frequencies]").disabled = !freqOk;
+    tsel.value = freqOk && p.transit_model !== "simple" ? "frequencies" : "simple";
+    $("qm-tmodel-note").textContent = meta.has_transit && !freqOk
+      ? "Los datos de transporte de este municipio son anteriores al modelo con esperas: actualízalos en «Transporte público»."
+      : "";
+    $("qm-penalty").value = p.transfer_penalty_min || 0;
     var weights = {};
     p.services.forEach(function (s) { weights[s.id] = s.weight; });
     $("qm-services").innerHTML = meta.services.map(function (s) {
@@ -401,13 +422,17 @@
       services.push({ id: c.dataset.svc, weight: isNaN(w) ? 1 : Math.max(0, Math.min(5, w)) });
     });
     return { mode: mode, view: view, distance_m: +$("qm-distance").value, time_minutes: +$("qm-minutes").value,
-             decay: +$("qm-decay").value, services: services };
+             decay: +$("qm-decay").value, services: services,
+             transit_model: $("qm-tmodel").value || "frequencies", transfer_penalty_min: +$("qm-penalty").value || 0 };
   }
 
   function syncFields() {
     var p = collectParams();
     show("qm-f-distance", p.mode !== "transit");
     show("qm-f-minutes", p.mode === "transit");
+    show("qm-f-transit", p.mode === "transit");
+    show("qm-f-penalty", p.transit_model === "frequencies");
+    $("qm-penalty-out").textContent = p.transfer_penalty_min ? "+" + p.transfer_penalty_min + " min" : "ninguna";
     show("qm-f-decay", p.view === "score");
     $("qm-distance-out").textContent = fmtInt(p.distance_m) + " m";
     $("qm-minutes-out").textContent = p.time_minutes + " min";
@@ -458,7 +483,8 @@
     setBusy(true);
     status("Calculando…", "busy");
     var body = { ine: state.city.ine, mode: p.mode, view: p.view, distance_m: p.distance_m,
-                 time_minutes: p.time_minutes, decay: p.decay, services: p.services };
+                 time_minutes: p.time_minutes, decay: p.decay, services: p.services,
+                 transit_model: p.transit_model || "frequencies", transfer_penalty_min: p.transfer_penalty_min || 0 };
     return api("/api/runs", { method: "POST", body: body }).then(function (payload) {
       state.runHash = payload.run && payload.run.hash;
       renderResult(payload);
@@ -636,6 +662,11 @@
     $("qm-transit-current").innerHTML = cur.length
       ? "Ahora: " + cur.map(function (g) { return esc(g.label); }).join(", ")
       : "Este municipio todavía no tiene transporte público.";
+    if (cur.length && !hasFreq(meta)) {
+      $("qm-transit-current").innerHTML += '<br><button id="qm-refresh" type="button" class="qm-btn qm-wide">' +
+        "Actualizar al modelo con esperas y trasbordos</button>";
+      $("qm-refresh").addEventListener("click", function () { startTransit({ gtfs_feeds: [], gtfs_auto: false, refresh: true }); });
+    }
     $("qm-feeds").innerHTML = "";
     $("qm-transit-box").open = false;
   }
@@ -672,15 +703,20 @@
     if (url) ids.push(url);
     if (!ids.length) { status("Elige algún feed o escribe una URL.", "error"); return; }
     if (ids.length > MAX_FEEDS) { status("Como máximo " + MAX_FEEDS + " feeds.", "error"); return; }
+    startTransit({ gtfs_feeds: ids, gtfs_auto: false });
+  });
+
+  function startTransit(body) {
+    if (!state.city) return;
     var ine = state.city.ine;
     status("Enviando la petición…", "busy");
-    api("/api/cities/" + ine + "/transit", { method: "POST", body: { gtfs_feeds: ids, gtfs_auto: false } })
+    api("/api/cities/" + ine + "/transit", { method: "POST", body: body })
       .then(function (job) { status(null); watchJob(job.id, ine); })
       .catch(function (e) {
         if (e.status === 409 && e.data && e.data.job) { status(null); return watchJob(e.data.job, ine); }
         status(errorText(e), "error");
       });
-  });
+  }
 
   // ------------------------------------------------------------------
   // Buscador de municipios
@@ -749,6 +785,10 @@
     var d = state.data, p = d.params;
     var mode = { distance: "linea-recta", network: "red", transit: "transporte" }[p.mode];
     var thr = p.mode === "transit" ? p.time_minutes + "min" : p.distance_m + "m";
+    if (p.mode === "transit") {
+      var used = (d.stats.diagnostics || {}).transit_model || p.transit_model;
+      thr += used === "simple" ? "-simple" : "-esperas" + (p.transfer_penalty_min ? "-p" + numTag(p.transfer_penalty_min) : "");
+    }
     var view = p.view === "count" ? "num-servicios" : state.legendView === "prio" ? "prioridad" : "puntuacion";
     var parts = ["quinzemin", slug(d.city.name.split("/")[0]), mode + "-" + thr, view];
     if (p.view === "score") parts.push("k" + numTag(p.decay));
@@ -898,6 +938,12 @@
                      transit: "Transporte público" }[p.mode];
     var thr = p.mode === "transit" ? p.time_minutes + " min" : fmtInt(p.distance_m) + " m";
     txt(modeName + " · " + thr, 15, "bold", "#1f2328", 22);
+    if (p.mode === "transit") {
+      var usedM = (st.diagnostics || {}).transit_model || p.transit_model;
+      txt(usedM === "simple" ? "Modelo simplificado (proyecto original)"
+          : "Con esperas y trasbordos" + (p.transfer_penalty_min ? " · +" + p.transfer_penalty_min + " min por trasbordo" : ""),
+          13, "normal", "#5f6670", 20);
+    }
     if (p.view === "score" && p.decay > 1) {
       var far = p.mode === "transit" ? nf2.format(p.time_minutes * p.decay) + " min" : fmtInt(p.distance_m * p.decay) + " m";
       txt("Crédito parcial hasta " + far, 13, "normal", "#5f6670", 20);
@@ -940,8 +986,7 @@
     }
     if (p.mode === "transit") {
       y += 6;
-      txt("Solo cuenta lo que se alcanza subiendo a un transporte público; no los trayectos solo a pie.",
-          11, "normal", "#8a6d00", 15);
+      txt(stripHtml(transitNote(d)), 11, "normal", "#8a6d00", 15);
     }
 
     ctx.font = "11px " + FONT; ctx.fillStyle = "#5f6670";

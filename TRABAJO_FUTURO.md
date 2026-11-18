@@ -143,6 +143,44 @@ intentarlo. Con una cola (Cloud Tasks o Pub/Sub), las peticiones esperarían su 
 mostrar la posición en la cola. Con 3.1–3.3 las preparaciones serían cortas y la cola casi no se
 notaría.
 
+### 3.8 Transporte público con horarios reales
+
+El modelo actual de transporte, «con esperas y trasbordos», trabaja con **frecuencias**. Cada
+subida espera la mitad del intervalo de la línea en un laborable representativo (7–21 h). Esto da
+un tiempo típico que no depende de la hora de salida, pero tiene límites:
+
+- supone llegadas aleatorias a la parada; con horarios coordinados (trasbordos sincronizados,
+  líneas con pocos pasos al día) la espera real puede ser mucho menor o mucho mayor;
+- no distingue la hora punta, la noche ni el fin de semana;
+- en líneas con muy pocas expediciones, la mitad del intervalo (p. ej. 3 h) no representa a quien
+  planifica el viaje según el horario.
+
+**Propuesta: cálculo con horario real**
+
+1. **Algoritmo**: *Connection Scan Algorithm* (CSA) o RAPTOR sobre las conexiones del día elegido.
+   CSA recorre una sola vez la lista de conexiones ordenada por hora y es fácil de vectorizar con
+   numpy o compilar con numba. RAPTOR va por rondas (una por trasbordo) y limita el número de
+   trasbordos de forma natural.
+2. **Hora de salida**: en vez de una hora fija, una **ventana**, por ejemplo de 8:00 a 9:00 cada
+   5 min, y como resultado la mediana o un percentil del tiempo. Así el indicador no depende de
+   haber salido un minuto antes o después del paso del autobús. Es la práctica habitual en los
+   estudios de accesibilidad.
+3. **Calendario**: elegir una fecha concreta (laborable, sábado, domingo) aplicando
+   `calendar.txt` y `calendar_dates.txt`, festivos incluidos. La selección del día representativo
+   que ya existe en `gtfs.py` (`_representative_day`) sirve de base.
+4. **Trasbordos**: tiempo mínimo de trasbordo (`transfers.txt` si el feed lo trae; si no, un
+   valor fijo) y trasbordos a pie entre paradas cercanas, como en el modelo actual.
+5. **Interfaz**: selector de día y franja horaria en la web, y el modelo por frecuencias como
+   opción rápida.
+
+**Coste y por qué se aplaza**: con 591 secciones y 12 horas de salida, son unos 7.000 cálculos
+desde un origen por recálculo. En Python puro serían minutos; con CSA vectorizado o numba, segundos.
+Para que la web siga respondiendo al momento, haría falta precalcular en la preparación los tiempos
+de cada sección a cada parada (la tabla del apartado 3.1, una por franja horaria) y dejar a la API
+solo los umbrales y los pesos. Además el resultado pasa a depender del día y la hora elegidos, lo
+que complica comparar municipios. Por eso se ha priorizado el modelo por frecuencias, que ya corrige
+los problemas principales del original: esperas en los trasbordos, trasbordos a pie e ir andando.
+
 ## 4. Resumen
 
 | Problema | Hoy | Propuesta |
@@ -152,6 +190,7 @@ notaría.
 | Coste por cálculo | carga red y grafo GTFS en cada instancia | tabla de distancias precalculada (3.1) |
 | Representatividad en términos extensos | centroide de la sección | orígenes ponderados por población (3.6) |
 | Esperas entre usuarios | 429 y reintento manual | cola (3.7) |
+| Transporte sin horarios | frecuencias por línea (tiempo típico) | horario real con ventana de salida, CSA/RAPTOR (3.8) |
 
 Con 3.1, 3.2 y 3.3 el límite de 400 km² dejaría de ser necesario. Madrid y Barcelona entrarían con
 3.4 o 3.5. Así se cubriría el 18,2 % de la población que hoy queda fuera.

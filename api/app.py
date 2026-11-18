@@ -118,6 +118,11 @@ _bundles: OrderedDict[str, tuple[str, engine.Bundle]] = OrderedDict()
 _bundles_lock = threading.Lock()
 
 
+def bundle_version(meta: dict) -> str:
+    """Cambia si la ciudad se vuelve a preparar o se actualiza su transporte (invalida cachés)."""
+    return meta["prepared_at"] + "|" + str(meta.get("transit_updated_at") or len(meta.get("gtfs_sources") or []))
+
+
 def city_meta(ine: str) -> dict:
     try:
         return store().read_json(f"cities/{ine}/meta.json")
@@ -128,7 +133,7 @@ def city_meta(ine: str) -> dict:
 def get_bundle(ine: str, meta: dict | None = None) -> engine.Bundle:
     """Bundle en memoria (LRU), recargado si la ciudad se ha vuelto a preparar."""
     meta = meta or city_meta(ine)
-    version = meta["prepared_at"] + str(len(meta.get("gtfs_sources") or []))
+    version = bundle_version(meta)
     with _bundles_lock:
         hit = _bundles.get(ine)
         if hit and hit[0] == version:
@@ -223,7 +228,8 @@ def get_city(ine: str) -> dict:
                 "job": active[0]["job"] if active else None}
     keep = ("ine", "name", "province", "center", "bbox", "population", "population_year", "km2", "services",
             "has_network", "has_transit", "gtfs_sources", "attributions", "prepared_at", "config")
-    return {**{k: meta.get(k) for k in keep}, "prepared": True,
+    tm = meta.get("transit_models") or (["simple"] if meta.get("has_transit") else [])
+    return {**{k: meta.get(k) for k in keep}, "prepared": True, "transit_models": tm,
             "attribution_html": results.attribution_html(meta),
             "job": active[0]["job"] if active else None}
 
@@ -278,6 +284,7 @@ class PrepareIn(BaseModel):
     gtfs_feeds: list[str] = Field(default_factory=list, max_length=5,
                                   description="feeds del catálogo (mdb-795) o URLs https")
     gtfs_auto: bool = Field(False, description="añadir los feeds urbanos y regionales que cubren el municipio")
+    refresh: bool = Field(False, description="solo /transit: reconstruir con los mismos feeds que ya tiene")
 
     @field_validator("gtfs_feeds")
     @classmethod
@@ -311,7 +318,8 @@ def _start_job(request: Request, ine: str, body: PrepareIn, kind: str) -> JSONRe
         raise too_many(f"Se ha alcanzado el máximo de {NEW_CITIES_PER_DAY} ciudades nuevas por día", 3600)
     _check_feeds(body.gtfs_feeds)
     try:
-        job = jobs.create(st, ine, gtfs_feeds=body.gtfs_feeds, gtfs_auto=body.gtfs_auto, client=client, kind=kind)
+        job = jobs.create(st, ine, gtfs_feeds=body.gtfs_feeds, gtfs_auto=body.gtfs_auto, client=client, kind=kind,
+                          refresh=body.refresh and kind == "transit")
     except jobs.Busy as e:
         return JSONResponse({"job": str(e), "status": "running", "detail": "Ya se está preparando"}, 409)
     try:
@@ -342,8 +350,8 @@ def prepare_city(ine: str, request: Request, body: PrepareIn | None = None) -> J
 def city_transit(ine: str, request: Request, body: PrepareIn) -> JSONResponse:
     _check_ine(ine)
     city_meta(ine)
-    if not body.gtfs_feeds and not body.gtfs_auto:
-        raise HTTPException(422, detail="Indica algún feed GTFS o gtfs_auto")
+    if not body.gtfs_feeds and not body.gtfs_auto and not body.refresh:
+        raise HTTPException(422, detail="Indica algún feed GTFS, gtfs_auto o refresh")
     return _start_job(request, ine, body, "transit")
 
 
@@ -379,6 +387,8 @@ class RunIn(BaseModel):
     time_minutes: int = Field(15, ge=5, le=60)
     decay: float = Field(2.0, ge=1, le=3)
     services: list[ServiceIn] | None = Field(None, max_length=20)
+    transit_model: Literal["frequencies", "simple"] = "frequencies"
+    transfer_penalty_min: float = Field(0.0, ge=0, le=15)
 
 
 def _params(body: RunIn, meta: dict) -> engine.Params:
@@ -397,6 +407,7 @@ def _params(body: RunIn, meta: dict) -> engine.Params:
         raise HTTPException(422, detail="Algún servicio debe tener peso mayor que 0")
     return engine.Params(mode=body.mode, view=body.view, distance_m=body.distance_m,
                          time_minutes=body.time_minutes, decay=body.decay,
+                         transit_model=body.transit_model, transfer_penalty_min=body.transfer_penalty_min,
                          services=[engine.ServiceParams(s.id, s.weight, s.distance_m) for s in services])
 
 
@@ -408,7 +419,7 @@ def _run_key(ine: str, h: str) -> str:
 def create_run(body: RunIn, request: Request) -> Response:
     meta = city_meta(body.ine)
     params = _params(body, meta)
-    h = results.params_hash(body.ine, params, meta["prepared_at"] + str(len(meta.get("gtfs_sources") or [])))
+    h = results.params_hash(body.ine, params, bundle_version(meta))
     key = _run_key(body.ine, h)
     st = store()
     if st.exists(key):

@@ -67,10 +67,10 @@ def update(st: qs.Storage, job: dict, **kw) -> dict:
 
 
 def create(st: qs.Storage, ine: str, gtfs_feeds: list[str] | None = None, gtfs_auto: bool = False,
-           client: str | None = None, kind: str = "prepare") -> dict:
+           client: str | None = None, kind: str = "prepare", refresh: bool = False) -> dict:
     """kind: "prepare" (municipio nuevo) o "transit" (solo el transporte público de uno ya preparado)."""
     job = {"id": f"{ine}-{uuid.uuid4().hex[:10]}", "ine": ine, "kind": kind, "status": "queued", "stage": "en cola",
-           "pct": 0, "msg": "", "gtfs_feeds": gtfs_feeds or [], "gtfs_auto": gtfs_auto,
+           "pct": 0, "msg": "", "gtfs_feeds": gtfs_feeds or [], "gtfs_auto": gtfs_auto, "refresh": refresh,
            "client": client, "created": _now(), "updated": _now()}
     lock = {"job": job["id"], "created": job["created"]}
     if not st.create_if_absent(_lock_key(ine), _json(lock)):
@@ -159,7 +159,7 @@ def run(job_id: str, st: qs.Storage | None = None) -> dict:
         if job.get("kind") == "transit":
             meta = prepare.update_transit(job["ine"], st, refs=job.get("gtfs_feeds") or None,
                                           auto=job.get("gtfs_auto", False), city_gtfs=city_gtfs,
-                                          progress=progress)
+                                          progress=progress, refresh=job.get("refresh", False))
             meta.setdefault("seconds", 0)
         else:
             meta = prepare.prepare(job["ine"], st, progress=progress, gtfs=city_gtfs,

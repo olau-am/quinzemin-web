@@ -24,7 +24,7 @@ no volver a preguntar lo que ya está decidido (§2).**
 | `quinzemin/catalog.py` | catálogo nacional `spain/`: secciones INE por provincia, población ADRH, `municipios.json` |
 | `quinzemin/prepare.py` | prepara un municipio → `cities/{ine}/` (áreas, servicios, red npz, GTFS opcional) |
 | `quinzemin/osm.py` | plantilla OSM (`config/osm_services.yaml`), consulta única con mirrors Overpass, clasificación de colegios |
-| `quinzemin/network.py`, `gtfs.py` | red peatonal (`to_npz`/`from_npz`) y grafo GTFS vectorizado |
+| `quinzemin/network.py`, `gtfs.py` | red peatonal (`to_npz`/`from_npz`); GTFS con dos modelos: por frecuencias de línea (esperas en cada subida, trasbordos a pie; predeterminado) y simplificado (el original, para la regresión) |
 | `quinzemin/population.py`, `download.py`, `config.py` | población INE, descargas, YAML |
 | `quinzemin/cli.py`, `render_folium.py` | CLI local con mapa folium (memoria del TFM) |
 | `api/app.py` | FastAPI: ciudades, municipios, `POST /api/runs` (caché `runs/`), preparación por trabajos, límites |
@@ -51,6 +51,8 @@ validada contra SSRF; feeds recortados a la zona). Licencias y atribuciones: tab
 Fase 3 cerrada y desplegada (bucket quinzemin-datos-1, Job quinzemin-prepare, cloudbuild.yaml; València
 preparada en la nube). Fase 4: web con panel (buscador, parámetros, recalcular, preparar municipios con
 progreso, añadir GTFS, YAML, URL compartible); `?api=http://localhost:8080` para usar la API local.
+Transporte: `Params.transit_model` (`frequencies` | `simple`); los YAML sin ese campo usan `simple` (regresión);
+los `transit.pkl` antiguos no tienen el modelo nuevo hasta un `update_transit(refresh=True)`.
 Overpass público es lento e inestable: preparar un municipio tarda de 8 a 20 min, casi todo esperando.
 
 ## Repo original
