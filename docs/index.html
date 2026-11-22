@@ -10,26 +10,33 @@
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <div id="map" aria-label="Mapa de accesibilidad"></div>
+  <div id="map" data-i18n-aria="map.aria"></div>
 
   <!-- Panel de configuración -->
-  <aside id="qm-panel" class="qm-card" aria-label="Configuración">
+  <aside id="qm-panel" class="qm-card" data-i18n-aria="panel.aria">
     <header class="qm-panel-head">
       <div>
         <h1>quinzemin</h1>
-        <div id="qm-subtitle" class="qm-sub">Cargando…</div>
+        <div id="qm-subtitle" class="qm-sub" data-i18n="loading">Cargando…</div>
       </div>
-      <button id="qm-panel-toggle" type="button" class="qm-icon-btn" aria-expanded="true"
-              aria-controls="qm-panel-body" title="Mostrar u ocultar el panel">☰</button>
+      <div class="qm-head-tools">
+        <div class="qm-lang">
+          <button id="qm-lang-btn" type="button" class="qm-icon-btn" aria-haspopup="listbox" aria-expanded="false"
+                  aria-controls="qm-lang-menu" data-i18n-title="lang.label"></button>
+          <ul id="qm-lang-menu" role="listbox" data-i18n-aria="lang.label" hidden></ul>
+        </div>
+        <button id="qm-panel-toggle" type="button" class="qm-icon-btn" aria-expanded="true"
+                aria-controls="qm-panel-body" data-i18n-title="panel.toggle">☰</button>
+      </div>
     </header>
 
     <div id="qm-panel-body">
       <!-- Municipio -->
       <section class="qm-sec">
-        <label for="qm-search" class="qm-h">Municipio</label>
+        <label for="qm-search" class="qm-h" data-i18n="sec.municipality">Municipio</label>
         <div class="qm-search-wrap">
           <input id="qm-search" type="search" autocomplete="off" spellcheck="false"
-                 placeholder="Buscar municipio o código INE…" aria-autocomplete="list" aria-controls="qm-results">
+                 data-i18n-placeholder="search.placeholder" aria-autocomplete="list" aria-controls="qm-results">
           <ul id="qm-results" role="listbox" hidden></ul>
         </div>
         <div id="qm-city-info" class="qm-sub"></div>
@@ -39,83 +46,81 @@
       <section id="qm-prepare" class="qm-sec" hidden>
         <p id="qm-prepare-text"></p>
         <label class="qm-check"><input id="qm-prepare-gtfs" type="checkbox" checked>
-          Incluir transporte público (feeds GTFS urbanos y regionales)</label>
-        <button id="qm-prepare-btn" type="button" class="qm-btn qm-primary">Preparar municipio</button>
-        <p class="qm-note">Se descargan sus secciones censales y población (INE), los servicios y la red peatonal
-          (OpenStreetMap). Suele tardar entre 5 y 30 minutos; puedes dejar la página abierta o volver luego.</p>
+          <span data-i18n="prepare.gtfs"></span></label>
+        <button id="qm-prepare-btn" type="button" class="qm-btn qm-primary" data-i18n="prepare.btn"></button>
+        <p class="qm-note" data-i18n="prepare.note"></p>
       </section>
 
       <!-- Progreso de un trabajo -->
       <section id="qm-job" class="qm-sec" hidden>
-        <div class="qm-h" id="qm-job-title">Preparando…</div>
+        <div class="qm-h" id="qm-job-title"></div>
         <div class="qm-progress"><div id="qm-job-bar"></div></div>
         <div id="qm-job-msg" class="qm-sub"></div>
       </section>
 
       <!-- Parámetros -->
       <form id="qm-form" class="qm-sec" hidden>
-        <div class="qm-h">Cálculo</div>
-        <div class="qm-seg" role="radiogroup" aria-label="Modo de cálculo">
-          <label><input type="radio" name="mode" value="distance"> Línea recta</label>
-          <label><input type="radio" name="mode" value="network"> Red peatonal</label>
-          <label><input type="radio" name="mode" value="transit"> Transporte</label>
+        <div class="qm-h" data-i18n="sec.calc"></div>
+        <div class="qm-seg" role="radiogroup" data-i18n-aria="mode.aria">
+          <label><input type="radio" name="mode" value="distance"> <span data-i18n="mode.distance"></span></label>
+          <label><input type="radio" name="mode" value="network"> <span data-i18n="mode.network"></span></label>
+          <label><input type="radio" name="mode" value="transit"> <span data-i18n="mode.transit"></span></label>
         </div>
 
         <div class="qm-field" id="qm-f-distance">
-          <label for="qm-distance">Distancia máxima <output id="qm-distance-out"></output></label>
+          <label for="qm-distance"><span data-i18n="f.distance"></span> <output id="qm-distance-out"></output></label>
           <input id="qm-distance" name="distance_m" type="range" min="100" max="3000" step="50">
         </div>
         <div class="qm-field" id="qm-f-minutes" hidden>
-          <label for="qm-minutes">Tiempo máximo <output id="qm-minutes-out"></output></label>
+          <label for="qm-minutes"><span data-i18n="f.minutes"></span> <output id="qm-minutes-out"></output></label>
           <input id="qm-minutes" name="time_minutes" type="range" min="5" max="60" step="1">
         </div>
         <div class="qm-field" id="qm-f-transit" hidden>
-          <label for="qm-tmodel">Modelo de transporte</label>
+          <label for="qm-tmodel" data-i18n="f.tmodel"></label>
           <select id="qm-tmodel" name="transit_model">
-            <option value="frequencies">Con esperas y trasbordos</option>
-            <option value="simple">Simplificado (proyecto original)</option>
+            <option value="frequencies" data-i18n="tmodel.frequencies"></option>
+            <option value="simple" data-i18n="tmodel.simple"></option>
           </select>
           <div id="qm-tmodel-note" class="qm-note"></div>
           <div class="qm-field" id="qm-f-penalty">
-            <label for="qm-penalty">Penalización por trasbordo <output id="qm-penalty-out"></output></label>
+            <label for="qm-penalty"><span data-i18n="f.penalty"></span> <output id="qm-penalty-out"></output></label>
             <input id="qm-penalty" name="transfer_penalty_min" type="range" min="0" max="15" step="1">
           </div>
         </div>
 
-        <div class="qm-seg" role="radiogroup" aria-label="Vista del mapa">
-          <label><input type="radio" name="view" value="score"> Puntuación 0–100</label>
-          <label><input type="radio" name="view" value="count"> Nº de servicios</label>
+        <div class="qm-seg" role="radiogroup" data-i18n-aria="view.aria">
+          <label><input type="radio" name="view" value="score"> <span data-i18n="view.score"></span></label>
+          <label><input type="radio" name="view" value="count"> <span data-i18n="view.count"></span></label>
         </div>
         <div class="qm-field" id="qm-f-decay">
-          <label for="qm-decay">Crédito parcial hasta <output id="qm-decay-out"></output></label>
+          <label for="qm-decay"><span data-i18n="f.decay"></span> <output id="qm-decay-out"></output></label>
           <input id="qm-decay" name="decay" type="range" min="1" max="3" step="0.25">
         </div>
 
         <details id="qm-services-box">
-          <summary class="qm-h">Servicios y pesos</summary>
+          <summary class="qm-h" data-i18n="services.box"></summary>
           <div id="qm-services"></div>
         </details>
 
         <div class="qm-actions">
-          <button id="qm-run" type="submit" class="qm-btn qm-primary">Recalcular</button>
-          <a id="qm-yaml" class="qm-btn" href="#" download aria-disabled="true"
-             title="Descarga la configuración para repetir el cálculo en local">YAML</a>
-          <button id="qm-share" type="button" class="qm-btn" title="Copiar el enlace a este resultado">Compartir</button>
+          <button id="qm-run" type="submit" class="qm-btn qm-primary" data-i18n="btn.run"></button>
+          <a id="qm-yaml" class="qm-btn" href="#" download aria-disabled="true">YAML</a>
+          <button id="qm-share" type="button" class="qm-btn" data-i18n="btn.share" data-i18n-title="share.title"></button>
         </div>
         <button id="qm-capture" type="button" class="qm-btn qm-wide" disabled
-                title="Imagen PNG del municipio entero con la leyenda (para informes)">📷 Captura del mapa (PNG)</button>
+                data-i18n="btn.capture" data-i18n-title="capture.title"></button>
       </form>
 
       <!-- Transporte público -->
       <section id="qm-transit" class="qm-sec" hidden>
         <details id="qm-transit-box">
-          <summary class="qm-h">Transporte público (GTFS)</summary>
+          <summary class="qm-h" data-i18n="transit.box"></summary>
           <div id="qm-transit-current" class="qm-sub"></div>
           <div id="qm-feeds"></div>
-          <label for="qm-feed-url" class="qm-sub">Otro feed (URL https de un zip GTFS):</label>
+          <label for="qm-feed-url" class="qm-sub" data-i18n="transit.url"></label>
           <input id="qm-feed-url" type="url" placeholder="https://…/gtfs.zip">
-          <button id="qm-transit-btn" type="button" class="qm-btn">Añadir / sustituir transporte</button>
-          <p class="qm-note">Catálogo: Mobility Database. Cada feed se usa con la licencia de su proveedor.</p>
+          <button id="qm-transit-btn" type="button" class="qm-btn" data-i18n="transit.btn"></button>
+          <p class="qm-note" data-i18n="transit.note"></p>
         </details>
       </section>
 
@@ -126,11 +131,12 @@
   <!-- Leyenda -->
   <aside id="qm-legend" class="qm-card" aria-live="polite">
     <button id="qm-legend-toggle" type="button" class="qm-icon-btn" aria-expanded="true"
-            title="Mostrar u ocultar la leyenda">▾</button>
+            data-i18n-title="legend.toggle">▾</button>
     <div id="qm-legend-body"></div>
   </aside>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

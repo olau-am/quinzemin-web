@@ -54,6 +54,20 @@ body {
   padding: 8px 10px 6px 12px;
 }
 .qm-panel-head h1 { margin: 0; font-size: 16px; letter-spacing: .2px; }
+.qm-head-tools { display: flex; align-items: center; gap: 2px; }
+
+/* Selector de idioma */
+.qm-lang { position: relative; }
+.qm-flag { width: 20px; height: 13px; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .18); vertical-align: -2px; flex-shrink: 0; }
+#qm-lang-btn { display: flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--muted); }
+#qm-lang-btn::after { content: "▾"; font-size: 10px; }
+#qm-lang-menu {
+  position: absolute; right: 0; top: 100%; z-index: 3; margin: 4px 0 0; padding: 4px 0; list-style: none;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); min-width: 140px;
+}
+#qm-lang-menu li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+#qm-lang-menu li:hover, #qm-lang-menu li:focus { background: var(--soft); outline: none; }
+#qm-lang-menu li[aria-selected="true"] { font-weight: 700; }
 #qm-panel-body { overflow-y: auto; padding: 0 12px 10px; }
 #qm-panel.collapsed #qm-panel-body { display: none; }
 .qm-sec { border-top: 1px solid var(--line); padding: 8px 0; }

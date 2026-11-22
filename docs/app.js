@@ -41,11 +41,21 @@
   // ------------------------------------------------------------------
   // Utilidades
   // ------------------------------------------------------------------
-  var nf0 = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0, useGrouping: "always" });
-  var nf1 = new Intl.NumberFormat("es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  var nf2 = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 2 });
+  var I18N = window.QM_I18N, t = I18N.t;
+  var nf0, nf1, nf2;
+  function setFormats() {
+    var loc = I18N.locale();
+    nf0 = new Intl.NumberFormat(loc, { maximumFractionDigits: 0, useGrouping: "always" });
+    nf1 = new Intl.NumberFormat(loc, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    nf2 = new Intl.NumberFormat(loc, { maximumFractionDigits: 2 });
+  }
+  setFormats();
   function fmtInt(n) { return nf0.format(n); }
-  function fmtPct(x) { return nf1.format(x) + " %"; }
+  function fmtPct(x) { return nf1.format(x) + (I18N.lang === "en" ? "%" : " %"); }
+  // Etiqueta de un servicio en el idioma elegido (si no está en el diccionario, la de los datos)
+  function svcLabel(s) { return t("svc." + s.id, null, s.label || s.id); }
+  function bandLabel(b) { return b.min === 100 ? t("lg.band_all") : b.label; }
+  function stageLabel(stage) { return I18N.has("stage." + stage) ? t("stage." + stage) : stage; }
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -67,7 +77,7 @@
       init.body = JSON.stringify(opts.body);
     }
     return fetch(API + path, init).catch(function () {
-      throw new ApiError(0, "No se puede conectar con el servidor. Inténtalo de nuevo en un momento.");
+      throw new ApiError(0, t("err.connect"));
     }).then(function (r) {
       return r.text().then(function (txt) {
         var data = null;
@@ -86,7 +96,7 @@
 
   function getJSON(url) {
     return fetch(url).then(function (r) {
-      if (!r.ok) throw new ApiError(r.status, "No se ha podido cargar " + url);
+      if (!r.ok) throw new ApiError(r.status, t("err.load", { url: url }));
       return r.json();
     });
   }
@@ -101,8 +111,8 @@
   function errorText(e) {
     if (e && e.status === 429) {
       var s = parseInt(e.retryAfter, 10);
-      var when = !s ? "" : s < 90 ? " Prueba de nuevo en " + s + " s." : " Prueba de nuevo en " + Math.ceil(s / 60) + " min.";
-      return (e.detail || "Demasiadas peticiones.") + when;
+      var when = !s ? "" : s < 90 ? t("err.retry_s", { n: s }) : t("err.retry_min", { n: Math.ceil(s / 60) });
+      return (e.detail || t("err.too_many")) + when;
     }
     return (e && e.message) || String(e);
   }
@@ -244,15 +254,15 @@
   }
 
   var MODE_TEXT = {
-    distance: function (p) { return "a &lt;" + fmtInt(p.distance_m) + " m en línea recta"; },
-    network: function (p) { return "a &lt;" + fmtInt(p.distance_m) + " m por la red peatonal"; },
-    transit: function (p) { return "en &lt;" + p.time_minutes + " min en transporte público"; }
+    distance: function (p) { return t("modetxt.distance", { d: fmtInt(p.distance_m) }); },
+    network: function (p) { return t("modetxt.network", { d: fmtInt(p.distance_m) }); },
+    transit: function (p) { return t("modetxt.transit", { t: p.time_minutes }); }
   };
 
   function renderResult(payload) {
     state.data = payload;
     if (payload.params.view === "count") state.legendView = "score";
-    $("qm-subtitle").innerHTML = esc(payload.city.name) + " · servicios " + MODE_TEXT[payload.params.mode](payload.params);
+    $("qm-subtitle").innerHTML = t("subtitle", { city: esc(payload.city.name), mode: MODE_TEXT[payload.params.mode](payload.params) });
     setAttribution(payload.city.attribution);
     recolor();
     buildEmojis();
@@ -265,18 +275,18 @@
   // ------------------------------------------------------------------
   function tooltipHtml(id) {
     var d = state.data, a = d && d.areas[id];
-    if (!a) return "Sin datos";
+    if (!a) return t("tip.nodata");
     var p = d.params, unit = p.mode === "transit" ? " min" : " m";
-    var html = "<b>Sección " + esc(a.cusec || id) + "</b><br>" +
-      '<span class="kv">Puntuación:</span> ' + nf1.format(a.puntuacion) + " / 100";
+    var html = "<b>" + t("tip.section", { id: esc(a.cusec || id) }) + "</b><br>" +
+      '<span class="kv">' + t("tip.score") + "</span> " + nf1.format(a.puntuacion) + " / 100";
     if (a.poblacion != null) {
-      html += ' · <span class="kv">Habitantes:</span> ' + fmtInt(a.poblacion);
-      if (a.prioridad != null) html += '<br><span class="kv">Prioridad (hab. × déficit):</span> ' + fmtInt(a.prioridad);
+      html += ' · <span class="kv">' + t("tip.pop") + "</span> " + fmtInt(a.poblacion);
+      if (a.prioridad != null) html += '<br><span class="kv">' + t("tip.prio") + "</span> " + fmtInt(a.prioridad);
     }
-    html += '<br><span class="kv">Servicios accesibles:</span> ' + a.score + " de " + d.services.length + "<table>";
+    html += '<br><span class="kv">' + t("tip.access") + "</span> " + t("tip.of", { a: a.score, n: d.services.length }) + "<table>";
     d.services.forEach(function (s) {
       var v = a.svc[s.id] || [false, null, "—"], ok = v[0], dist = v[1];
-      html += "<tr><td>" + (s.emoji || "•") + "</td><td>" + esc(s.label) + "</td>" +
+      html += "<tr><td>" + (s.emoji || "•") + "</td><td>" + esc(svcLabel(s)) + "</td>" +
         '<td class="' + (ok ? "ok" : "ko") + '">' + (ok ? "✓" : "✗") + "</td><td>" + esc(v[2]) + "</td>" +
         '<td class="n">' + (dist == null || dist >= 9999 ? "—" : fmtInt(dist) + unit) + "</td></tr>";
     });
@@ -296,60 +306,56 @@
   function transitNote(d) {
     var diag = (d.stats && d.stats.diagnostics) || {}, used = diag.transit_model || d.params.transit_model;
     if (used === "frequencies") {
-      var pen = d.params.transfer_penalty_min ? " más " + d.params.transfer_penalty_min + " min por trasbordo" : "";
-      return "Tiempo = el menor entre ir andando y en transporte público, esperando en cada subida la mitad " +
-        "del intervalo de esa línea (laborable, 7–21 h)" + pen + "; trasbordos a pie de hasta 250 m.";
+      return t("tn.freq", { pen: d.params.transfer_penalty_min ? t("tn.pen", { p: d.params.transfer_penalty_min }) : "" });
     }
-    return (diag.transit_model_fallback ? "<b>Datos de transporte antiguos: se ha usado el modelo simplificado.</b> " : "") +
-      "Modelo simplificado: solo cuenta lo que se alcanza subiendo a un transporte (espera media solo en la primera " +
-      "parada, trasbordos sin espera), no los trayectos a pie. Donde hay poco servicio los resultados son pesimistas.";
+    return (diag.transit_model_fallback ? t("tn.fallback") : "") + t("tn.simple");
   }
 
   function renderLegend() {
     var d = state.data, st = d.stats, p = d.params, cov = st.coverage, html, body = "";
     if (p.view === "count") {
-      html = '<div class="qm-title">Servicios ' + MODE_TEXT[p.mode](p) + "</div>";
+      html = '<div class="qm-title">' + t("lg.title_count", { mode: MODE_TEXT[p.mode](p) }) + "</div>";
       var n = d.services.length;
-      body += '<div class="qm-h">Nº de servicios' + (cov ? " · % población" : "") + "</div>";
+      body += '<div class="qm-h">' + t("lg.h_count") + (cov ? t("lg.pct_pop") : "") + "</div>";
       (st.counts || []).forEach(function (c) {
-        var label = c.score === 0 ? "0 — ninguno" : c.score === n ? n + " — todos" : String(c.score);
+        var label = c.score === 0 ? t("lg.count_none") : c.score === n ? t("lg.count_all", { n: n }) : String(c.score);
         body += row(swatch(rdylgn(c.score / Math.max(n, 1))), label, cov ? fmtPct(c.pct) : "");
       });
     } else {
       var far = p.mode === "transit" ? nf2.format(p.time_minutes * p.decay) + " min"
                                      : fmtInt(p.distance_m * p.decay) + " m";
-      html = '<div class="qm-title">Puntuación de accesibilidad</div>' +
-        '<div class="qm-sub">100 = todos los servicios ' + MODE_TEXT[p.mode](p) +
-        (p.decay > 1 ? "<br>crédito parcial hasta " + far : "") + "</div>";
+      html = '<div class="qm-title">' + t("lg.title_score") + "</div>" +
+        '<div class="qm-sub">' + t("lg.sub_score", { mode: MODE_TEXT[p.mode](p) }) +
+        (p.decay > 1 ? "<br>" + t("lg.partial", { far: far }) : "") + "</div>";
       if (st.priority) {
         body += '<div class="qm-toggle" role="radiogroup">' + ["score", "prio"].map(function (k) {
           return '<label><input type="radio" name="qm-lview" value="' + k + '"' +
-            (state.legendView === k ? " checked" : "") + "> " + (k === "score" ? "Puntuación" : "Prioridad") + "</label>";
+            (state.legendView === k ? " checked" : "") + "> " + (k === "score" ? t("lg.view_score") : t("lg.view_prio")) + "</label>";
         }).join("") + "</div>";
       }
       if (state.legendView === "prio" && st.priority) {
         var cls = st.priority.classes, nc = cls.length;
-        body += '<div class="qm-h">Hab. × déficit de servicios</div>';
+        body += '<div class="qm-h">' + t("lg.h_prio") + "</div>";
         for (var c = nc - 1; c >= 0; c--) {
           var k = cls[c];
           var lab = k.max == null ? "≥ " + fmtInt(k.min) : fmtInt(k.min) + " – " + fmtInt(k.max);
-          body += row(swatch(PRIO_COLORS[nc][c]), lab, k.areas + " áreas");
+          body += row(swatch(PRIO_COLORS[nc][c]), lab, t("lg.areas", { n: k.areas }));
         }
       } else {
-        body += '<div class="qm-h">Puntuación' + (cov ? " · % población" : "") + "</div>";
-        st.bands.forEach(function (b, i) { body += row(swatch(BAND_COLORS[i]), esc(b.label), cov ? fmtPct(b.pct) : ""); });
+        body += '<div class="qm-h">' + t("lg.h_score") + (cov ? t("lg.pct_pop") : "") + "</div>";
+        st.bands.forEach(function (b, i) { body += row(swatch(BAND_COLORS[i]), esc(bandLabel(b)), cov ? fmtPct(b.pct) : ""); });
       }
     }
     if (cov) {
       var year = st.population && st.population.year ? " · INE " + st.population.year : "";
-      body += '<hr class="qm-hr"><div class="qm-h">Población con acceso</div>' +
-        '<div class="qm-sub">' + fmtInt(st.population.total) + " hab." + year + "</div>" +
-        row(emo("✅"), "Todos los servicios", fmtPct(cov.all)) +
-        row(emo("⛔"), "Ningún servicio", fmtPct(cov.none));
-      if (cov.mean_score != null) body += row(emo("⌀"), "Puntuación media", nf0.format(cov.mean_score) + " / 100");
+      body += '<hr class="qm-hr"><div class="qm-h">' + t("lg.h_access") + "</div>" +
+        '<div class="qm-sub">' + t("inhab", { n: fmtInt(st.population.total) }) + year + "</div>" +
+        row(emo("✅"), t("lg.all"), fmtPct(cov.all)) +
+        row(emo("⛔"), t("lg.none"), fmtPct(cov.none));
+      if (cov.mean_score != null) body += row(emo("⌀"), t("lg.mean"), nf0.format(cov.mean_score) + " / 100");
       body += '<hr class="qm-hr">';
       d.services.forEach(function (s) {
-        body += row(emo(s.emoji || "•"), esc(s.label), fmtPct(cov.per_service[s.id] || 0));
+        body += row(emo(s.emoji || "•"), esc(svcLabel(s)), fmtPct(cov.per_service[s.id] || 0));
       });
     }
     if (p.mode === "transit") body += '<div class="qm-warn">' + transitNote(d) + "</div>";
@@ -384,8 +390,7 @@
       var ok = available(meta, r.value);
       r.disabled = !ok;
       r.parentNode.classList.toggle("disabled", !ok);
-      r.parentNode.title = ok ? "" : r.value === "transit" ? "Este municipio no tiene transporte público: añádelo abajo"
-                                                           : "Este municipio no tiene red peatonal";
+      r.parentNode.title = ok ? "" : r.value === "transit" ? t("mode.no_transit") : t("mode.no_network");
       r.checked = r.value === p.mode;
     });
     form.querySelectorAll("input[name=view]").forEach(function (r) { r.checked = r.value === p.view; });
@@ -395,18 +400,16 @@
     var freqOk = hasFreq(meta), tsel = $("qm-tmodel");
     tsel.querySelector("option[value=frequencies]").disabled = !freqOk;
     tsel.value = freqOk && p.transit_model !== "simple" ? "frequencies" : "simple";
-    $("qm-tmodel-note").textContent = meta.has_transit && !freqOk
-      ? "Los datos de transporte de este municipio son anteriores al modelo con esperas: actualízalos en «Transporte público»."
-      : "";
+    $("qm-tmodel-note").textContent = meta.has_transit && !freqOk ? t("transit.old_note") : "";
     $("qm-penalty").value = p.transfer_penalty_min || 0;
     var weights = {};
     p.services.forEach(function (s) { weights[s.id] = s.weight; });
     $("qm-services").innerHTML = meta.services.map(function (s) {
       var on = s.id in weights, w = on ? weights[s.id] : 1;
       return '<div class="qm-svc"><input type="checkbox" id="qm-s-' + s.id + '" data-svc="' + s.id + '"' + (on ? " checked" : "") +
-        '><label class="lbl" for="qm-s-' + s.id + '">' + (s.emoji || "•") + " " + esc(s.label) + "</label>" +
+        '><label class="lbl" for="qm-s-' + s.id + '">' + (s.emoji || "•") + " " + esc(svcLabel(s)) + "</label>" +
         '<input type="number" min="0" max="5" step="0.5" value="' + w + '" data-weight="' + s.id +
-        '" aria-label="Peso de ' + esc(s.label) + '" title="Peso en la puntuación (0–5)"></div>';
+        '" aria-label="' + esc(t("w.aria", { s: svcLabel(s) })) + '" title="' + esc(t("w.title")) + '"></div>';
     }).join("");
     syncFields();
     show(form, true);
@@ -432,12 +435,12 @@
     show("qm-f-minutes", p.mode === "transit");
     show("qm-f-transit", p.mode === "transit");
     show("qm-f-penalty", p.transit_model === "frequencies");
-    $("qm-penalty-out").textContent = p.transfer_penalty_min ? "+" + p.transfer_penalty_min + " min" : "ninguna";
+    $("qm-penalty-out").textContent = p.transfer_penalty_min ? "+" + p.transfer_penalty_min + " min" : t("penalty.none");
     show("qm-f-decay", p.view === "score");
     $("qm-distance-out").textContent = fmtInt(p.distance_m) + " m";
     $("qm-minutes-out").textContent = p.time_minutes + " min";
     var far = p.mode === "transit" ? nf2.format(p.time_minutes * p.decay) + " min" : fmtInt(p.distance_m * p.decay) + " m";
-    $("qm-decay-out").textContent = p.decay <= 1 ? "sin crédito parcial" : "×" + nf2.format(p.decay) + " = " + far;
+    $("qm-decay-out").textContent = p.decay <= 1 ? t("decay.none") : "×" + nf2.format(p.decay) + " = " + far;
   }
 
   form.addEventListener("input", syncFields);
@@ -449,11 +452,11 @@
     if (state.runHash && state.city) {
       a.href = API + "/api/runs/" + state.city.ine + "/" + state.runHash + "/config.yaml";
       a.setAttribute("aria-disabled", "false");
-      a.title = "Descarga la configuración para repetir el cálculo en local";
+      a.title = t("yaml.title");
     } else {
       a.href = "#";
       a.setAttribute("aria-disabled", "true");
-      a.title = "Recalcula para poder descargar la configuración";
+      a.title = t("yaml.disabled");
     }
   }
 
@@ -461,8 +464,8 @@
     writeHash();
     var url = location.href;
     (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () {
-      status("Enlace copiado al portapapeles.");
-    }, function () { window.prompt("Copia este enlace:", url); });
+      status(t("share.copied"));
+    }, function () { window.prompt(t("share.prompt"), url); });
   });
 
   // ------------------------------------------------------------------
@@ -476,12 +479,12 @@
   function runCalc(params) {
     if (!state.city || state.busy) return Promise.resolve();
     var p = params || collectParams();
-    if (!p.services.length) { status("Elige al menos un servicio.", "error"); return Promise.resolve(); }
+    if (!p.services.length) { status(t("need.service"), "error"); return Promise.resolve(); }
     if (!p.services.some(function (s) { return s.weight > 0; })) {
-      status("Algún servicio debe tener peso mayor que 0.", "error"); return Promise.resolve();
+      status(t("need.weight"), "error"); return Promise.resolve();
     }
     setBusy(true);
-    status("Calculando…", "busy");
+    status(t("calculating"), "busy");
     var body = { ine: state.city.ine, mode: p.mode, view: p.view, distance_m: p.distance_m,
                  time_minutes: p.time_minutes, decay: p.decay, services: p.services,
                  transit_model: p.transit_model || "frequencies", transfer_penalty_min: p.transfer_penalty_min || 0 };
@@ -496,7 +499,7 @@
   }
 
   function loadRun(ine, hash) {
-    status("Cargando resultado…", "busy");
+    status(t("loading.result"), "busy");
     return api("/api/runs/" + ine + "/" + hash).then(function (payload) {
       state.runHash = hash;
       renderResult(payload);
@@ -510,10 +513,10 @@
   // Ciudades
   // ------------------------------------------------------------------
   function cityInfo(meta) {
-    var bits = [esc(meta.province || ""), meta.population ? fmtInt(meta.population) + " hab." : ""];
+    var bits = [esc(meta.province || ""), meta.population ? t("inhab", { n: fmtInt(meta.population) }) : ""];
     if (meta.prepared_at) {
       var d = meta.prepared_at.slice(0, 10).split("-");
-      bits.push("datos del " + d[2] + "/" + d[1] + "/" + d[0]);
+      bits.push(t("city.data_from", { d: d[2] + "/" + d[1] + "/" + d[0] }));
     }
     $("qm-city-info").innerHTML = bits.filter(Boolean).join(" · ");
   }
@@ -521,8 +524,9 @@
   function loadCity(ine, opts) {
     opts = opts || {};
     stopPolling();
-    status("Cargando municipio…", "busy");
+    status(t("loading.city"), "busy");
     return api("/api/cities/" + ine).then(function (meta) {
+      state.unprepared = null;
       if (!meta.prepared) {
         state.city = null;
         showUnprepared(meta);
@@ -581,13 +585,20 @@
     $("qm-capture").disabled = true;
     setYaml();
     setAttribution('<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>');
-    $("qm-legend-body").innerHTML = '<div class="qm-title">Sin datos</div><div class="qm-sub">' + esc(message) + "</div>";
+    $("qm-legend-body").innerHTML = '<div class="qm-title">' + t("lg.nodata") + '</div><div class="qm-sub">' + esc(message) + "</div>";
+  }
+
+  function unpreparedTexts(meta) {
+    $("qm-legend-body").innerHTML = '<div class="qm-title">' + t("lg.nodata") + '</div><div class="qm-sub">' +
+      esc(t(meta.allowed ? "unprep.legend" : "unprep.legend_big", { name: meta.name })) + "</div>";
+    $("qm-subtitle").textContent = t("unprep.subtitle", { name: meta.name });
+    $("qm-prepare-text").textContent = t(meta.allowed ? "prepare.not_ready" : "prepare.too_big", { name: meta.name });
   }
 
   function showUnprepared(meta) {
-    clearMap(meta.allowed ? "Prepara " + meta.name + " para ver su mapa de accesibilidad."
-                          : meta.name + " es demasiado grande para prepararlo desde la web.");
-    $("qm-subtitle").textContent = meta.name + " · sin preparar";
+    clearMap("");
+    state.unprepared = meta;
+    unpreparedTexts(meta);
     if (meta.bbox) map.fitBounds([[meta.bbox[1], meta.bbox[0]], [meta.bbox[3], meta.bbox[2]]], { padding: [20, 20] });
     show(form, false);
     show("qm-transit", false);
@@ -596,21 +607,14 @@
     status(null);
     show("qm-prepare", true);
     var btn = $("qm-prepare-btn");
-    if (!meta.allowed) {
-      $("qm-prepare-text").textContent = meta.name + " supera el tamaño máximo que se puede preparar desde la web " +
-        "(1,5 millones de habitantes y 400 km²).";
-      btn.disabled = true;
-    } else {
-      $("qm-prepare-text").textContent = meta.name + " todavía no está preparado.";
-      btn.disabled = false;
-    }
+    btn.disabled = !meta.allowed;
     btn.onclick = function () { startPrepare(meta.ine); };
     if (meta.job) watchJob(meta.job, meta.ine);
   }
 
   function startPrepare(ine) {
     $("qm-prepare-btn").disabled = true;
-    status("Enviando la petición…", "busy");
+    status(t("sending"), "busy");
     api("/api/cities/" + ine + "/prepare", { method: "POST", body: { gtfs_feeds: [], gtfs_auto: $("qm-prepare-gtfs").checked } })
       .then(function (job) { status(null); watchJob(job.id, ine); })
       .catch(function (e) {
@@ -629,20 +633,20 @@
     stopPolling();
     show("qm-prepare", false);
     show("qm-job", true);
-    $("qm-job-title").textContent = "Preparando " + ($("qm-search").value || ine) + "…";
+    $("qm-job-title").textContent = t("job.preparing", { name: $("qm-search").value || ine });
     var tick = function () {
       api("/api/jobs/" + id).then(function (j) {
         $("qm-job-bar").style.width = Math.max(3, j.pct || 0) + "%";
-        $("qm-job-msg").textContent = (j.status === "queued" ? "En cola" : j.stage) + (j.msg ? ": " + j.msg : "") +
+        $("qm-job-msg").textContent = (j.status === "queued" ? t("stage.queued") : stageLabel(j.stage)) + (j.msg ? ": " + j.msg : "") +
           " (" + (j.pct || 0) + " %)";
-        if (j.kind === "transit") $("qm-job-title").textContent = "Añadiendo transporte público…";
+        if (j.kind === "transit") $("qm-job-title").textContent = t("job.transit");
         if (j.status === "done") {
           show("qm-job", false);
-          status("Listo.");
+          status(t("job.done"));
           loadCity(ine);
         } else if (j.status === "error") {
           show("qm-job", false);
-          status("La preparación ha fallado: " + j.msg, "error");
+          status(t("job.failed", { msg: j.msg }), "error");
           if (j.kind !== "transit") show("qm-prepare", true);
           $("qm-prepare-btn").disabled = false;
         } else {
@@ -660,11 +664,11 @@
     show("qm-transit", true);
     var cur = meta.gtfs_sources || [];
     $("qm-transit-current").innerHTML = cur.length
-      ? "Ahora: " + cur.map(function (g) { return esc(g.label); }).join(", ")
-      : "Este municipio todavía no tiene transporte público.";
+      ? t("transit.now", { list: cur.map(function (g) { return esc(g.label); }).join(", ") })
+      : t("transit.none");
     if (cur.length && !hasFreq(meta)) {
       $("qm-transit-current").innerHTML += '<br><button id="qm-refresh" type="button" class="qm-btn qm-wide">' +
-        "Actualizar al modelo con esperas y trasbordos</button>";
+        esc(t("transit.refresh")) + "</button>";
       $("qm-refresh").addEventListener("click", function () { startTransit({ gtfs_feeds: [], gtfs_auto: false, refresh: true }); });
     }
     $("qm-feeds").innerHTML = "";
@@ -674,23 +678,23 @@
   $("qm-transit-box").addEventListener("toggle", function () {
     if (!this.open || !state.city || state.feedsFor === state.city.ine) return;
     var ine = state.city.ine;
-    $("qm-feeds").innerHTML = '<div class="qm-sub">Buscando feeds…</div>';
+    $("qm-feeds").innerHTML = '<div class="qm-sub">' + t("feeds.searching") + "</div>";
     api("/api/cities/" + ine + "/gtfs-feeds").then(function (feeds) {
       state.feedsFor = ine;
       var current = {};
       (state.city.gtfs_sources || []).forEach(function (g) { current[g.id] = true; });
       if (!feeds.length) {
-        $("qm-feeds").innerHTML = '<div class="qm-sub">No hay feeds del catálogo para esta zona.</div>';
+        $("qm-feeds").innerHTML = '<div class="qm-sub">' + t("feeds.none") + "</div>";
         return;
       }
       $("qm-feeds").innerHTML = feeds.map(function (f) {
         var checked = current[f.id] || (f.auto && !(state.city.gtfs_sources || []).length);
         var lic = f.nap ? '<a href="https://nap.transportes.gob.es/licencia-datos" target="_blank" rel="noopener">NAP (MITRAMS)</a>'
-                : f.license_url ? '<a href="' + esc(f.license_url) + '" target="_blank" rel="noopener">licencia</a>' : "sin licencia indicada";
+                : f.license_url ? '<a href="' + esc(f.license_url) + '" target="_blank" rel="noopener">' + t("feeds.licence") + "</a>" : t("feeds.no_licence");
         return '<label class="qm-feed"><input type="checkbox" data-feed="' + esc(f.id) + '"' + (checked ? " checked" : "") +
           (f.status !== "active" ? " disabled" : "") + "><span>" + esc(f.provider) +
-          '<br><span class="meta"><span class="qm-badge">' + esc(f.scope) + "</span> " +
-          (f.status !== "active" ? "inactivo · " : "") + lic + "</span></span></label>";
+          '<br><span class="meta"><span class="qm-badge">' + esc(t("scope." + f.scope, null, f.scope)) + "</span> " +
+          (f.status !== "active" ? t("feeds.inactive") + " · " : "") + lic + "</span></span></label>";
       }).join("");
     }).catch(function (e) { $("qm-feeds").innerHTML = '<div class="qm-sub">' + esc(errorText(e)) + "</div>"; });
   });
@@ -701,15 +705,15 @@
     document.querySelectorAll("input[data-feed]:checked").forEach(function (c) { ids.push(c.dataset.feed); });
     var url = $("qm-feed-url").value.trim();
     if (url) ids.push(url);
-    if (!ids.length) { status("Elige algún feed o escribe una URL.", "error"); return; }
-    if (ids.length > MAX_FEEDS) { status("Como máximo " + MAX_FEEDS + " feeds.", "error"); return; }
+    if (!ids.length) { status(t("feeds.choose"), "error"); return; }
+    if (ids.length > MAX_FEEDS) { status(t("feeds.max", { n: MAX_FEEDS }), "error"); return; }
     startTransit({ gtfs_feeds: ids, gtfs_auto: false });
   });
 
   function startTransit(body) {
     if (!state.city) return;
     var ine = state.city.ine;
-    status("Enviando la petición…", "busy");
+    status(t("sending"), "busy");
     api("/api/cities/" + ine + "/transit", { method: "POST", body: body })
       .then(function (job) { status(null); watchJob(job.id, ine); })
       .catch(function (e) {
@@ -726,12 +730,13 @@
 
   function renderResults() {
     list.innerHTML = results.map(function (m, i) {
-      var badge = m.prepared ? '<span class="qm-badge ok">preparado</span>'
-                : m.allowed ? '<span class="qm-badge">sin preparar</span>' : '<span class="qm-badge ko">demasiado grande</span>';
+      var badge = m.prepared ? '<span class="qm-badge ok">' + t("badge.prepared") + "</span>"
+                : m.allowed ? '<span class="qm-badge">' + t("badge.unprepared") + "</span>"
+                : '<span class="qm-badge ko">' + t("badge.too_big") + "</span>";
       return '<li role="option" data-i="' + i + '" aria-selected="' + (i === active) + '"><span class="name">' +
-        esc(m.nombre) + '</span><span class="meta">' + esc(m.provincia) + " · " + fmtInt(m.poblacion || 0) +
-        " hab.</span>" + badge + "</li>";
-    }).join("") || '<li class="qm-sub">Sin resultados</li>';
+        esc(m.nombre) + '</span><span class="meta">' + esc(m.provincia) + " · " + t("inhab", { n: fmtInt(m.poblacion || 0) }) +
+        "</span>" + badge + "</li>";
+    }).join("") || '<li class="qm-sub">' + t("search.none") + "</li>";
     list.hidden = false;
   }
 
@@ -783,13 +788,13 @@
   // quinzemin_valencia_red-800m_puntuacion_k2[_sin-cul][_w-sal2][_2026-11-16].png
   function captureName() {
     var d = state.data, p = d.params;
-    var mode = { distance: "linea-recta", network: "red", transit: "transporte" }[p.mode];
+    var mode = t("fn." + p.mode);
     var thr = p.mode === "transit" ? p.time_minutes + "min" : p.distance_m + "m";
     if (p.mode === "transit") {
       var used = (d.stats.diagnostics || {}).transit_model || p.transit_model;
-      thr += used === "simple" ? "-simple" : "-esperas" + (p.transfer_penalty_min ? "-p" + numTag(p.transfer_penalty_min) : "");
+      thr += used === "simple" ? "-simple" : "-" + t("fn.waits") + (p.transfer_penalty_min ? "-p" + numTag(p.transfer_penalty_min) : "");
     }
-    var view = p.view === "count" ? "num-servicios" : state.legendView === "prio" ? "prioridad" : "puntuacion";
+    var view = p.view === "count" ? t("fn.count") : state.legendView === "prio" ? t("fn.prio") : t("fn.score");
     var parts = ["quinzemin", slug(d.city.name.split("/")[0]), mode + "-" + thr, view];
     if (p.view === "score") parts.push("k" + numTag(p.decay));
     var used = {};
@@ -798,7 +803,7 @@
     var off = all.filter(function (s) { return !(s.id in used); }).map(function (s) { return s.id.slice(0, 3); });
     var w = p.services.filter(function (s) { return s.weight !== 1; })
       .map(function (s) { return s.id.slice(0, 3) + numTag(s.weight); });
-    if (off.length) parts.push("sin-" + off.join("-"));
+    if (off.length) parts.push(t("fn.without") + "-" + off.join("-"));
     if (w.length) parts.push("w-" + w.join("-"));
     parts.push(new Date().toISOString().slice(0, 10));
     return parts.join("_") + ".png";
@@ -889,7 +894,7 @@
 
   function drawCredits(ctx, MW, MH, C) {
     ctx.font = "11px " + FONT;
-    var txt = "Mapa base: © OpenStreetMap contributors · Datos: " + stripHtml(state.data.city.attribution);
+    var txt = t("cap.credits", { a: stripHtml(state.data.city.attribution) });
     var lines = wrapLines(ctx, txt, MW - 20);
     var h = Math.max(C.FOOT, lines.length * 14 + 10);
     ctx.fillStyle = "#ffffff";
@@ -927,62 +932,61 @@
       y += 24;
     }
 
-    txt("QUINZEMIN · CIUDAD DE LOS 15 MINUTOS", 11, "bold", "#5f6670", 26);
+    txt(t("cap.header"), 11, "bold", "#5f6670", 26);
     txt(d.city.name, 26, "bold", "#1f2328", 32);
-    var info = [state.city && state.city.province, cov ? fmtInt(st.population.total) + " hab." : "",
+    var info = [state.city && state.city.province, cov ? t("inhab", { n: fmtInt(st.population.total) }) : "",
                 st.population && st.population.year ? "INE " + st.population.year : ""].filter(Boolean).join(" · ");
     if (info) txt(info, 13, "normal", "#5f6670", 22);
     y += 6; hr();
 
-    var modeName = { distance: "Distancia en línea recta", network: "Distancia por la red peatonal",
-                     transit: "Transporte público" }[p.mode];
+    var modeName = t("cap.mode." + p.mode);
     var thr = p.mode === "transit" ? p.time_minutes + " min" : fmtInt(p.distance_m) + " m";
     txt(modeName + " · " + thr, 15, "bold", "#1f2328", 22);
     if (p.mode === "transit") {
       var usedM = (st.diagnostics || {}).transit_model || p.transit_model;
-      txt(usedM === "simple" ? "Modelo simplificado (proyecto original)"
-          : "Con esperas y trasbordos" + (p.transfer_penalty_min ? " · +" + p.transfer_penalty_min + " min por trasbordo" : ""),
+      txt(usedM === "simple" ? t("tmodel.simple")
+          : t("tmodel.frequencies") + (p.transfer_penalty_min ? t("cap.pen", { p: p.transfer_penalty_min }) : ""),
           13, "normal", "#5f6670", 20);
     }
     if (p.view === "score" && p.decay > 1) {
       var far = p.mode === "transit" ? nf2.format(p.time_minutes * p.decay) + " min" : fmtInt(p.distance_m * p.decay) + " m";
-      txt("Crédito parcial hasta " + far, 13, "normal", "#5f6670", 20);
+      txt(t("cap.partial", { far: far }), 13, "normal", "#5f6670", 20);
     }
     var custom = p.services.filter(function (s) { return s.weight !== 1; });
-    txt(p.services.length + " servicios" + (custom.length ? " · pesos: " + custom.map(function (s) {
+    txt(t("cap.nsvc", { n: p.services.length }) + (custom.length ? t("cap.weights", { list: custom.map(function (s) {
       var sv = d.services.filter(function (x) { return x.id === s.id; })[0];
-      return (sv ? sv.label : s.id) + " ×" + nf2.format(s.weight);
-    }).join(", ") : " · mismo peso"), 13, "normal", "#5f6670", 20);
+      return svcLabel(sv || s) + " ×" + nf2.format(s.weight);
+    }).join(", ") }) : t("cap.same")), 13, "normal", "#5f6670", 20);
     y += 8; hr();
 
     var n = d.services.length;
     if (p.view === "count") {
-      head("Nº de servicios accesibles" + (cov ? " · % población" : ""));
+      head(t("cap.h_count") + (cov ? t("lg.pct_pop") : ""));
       (st.counts || []).forEach(function (c) {
-        var label = c.score === 0 ? "0 — ninguno" : c.score === n ? n + " — todos" : String(c.score);
+        var label = c.score === 0 ? t("lg.count_none") : c.score === n ? t("lg.count_all", { n: n }) : String(c.score);
         row({ color: rdylgn(c.score / Math.max(n, 1)) }, label, cov ? fmtPct(c.pct) : "");
       });
     } else if (state.legendView === "prio" && st.priority) {
-      head("Prioridad · habitantes × déficit");
+      head(t("cap.h_prio"));
       var cls = st.priority.classes, nc = cls.length;
       for (var c = nc - 1; c >= 0; c--) {
         var kk = cls[c];
         row({ color: PRIO_COLORS[nc][c] }, kk.max == null ? "≥ " + fmtInt(kk.min) : fmtInt(kk.min) + " – " + fmtInt(kk.max),
-            kk.areas + " secciones");
+            t("cap.sections", { n: kk.areas }));
       }
     } else {
-      head("Puntuación 0–100" + (cov ? " · % población" : ""));
-      st.bands.forEach(function (bd, i) { row({ color: BAND_COLORS[i] }, bd.label, cov ? fmtPct(bd.pct) : ""); });
+      head(t("cap.h_score") + (cov ? t("lg.pct_pop") : ""));
+      st.bands.forEach(function (bd, i) { row({ color: BAND_COLORS[i] }, bandLabel(bd), cov ? fmtPct(bd.pct) : ""); });
     }
 
     if (cov) {
       y += 4; hr();
-      head("Población con acceso");
-      row({ emoji: "✅" }, "Todos los servicios", fmtPct(cov.all));
-      row({ emoji: "⛔" }, "Ningún servicio", fmtPct(cov.none));
-      if (cov.mean_score != null) row({ emoji: "⌀" }, "Puntuación media", nf0.format(cov.mean_score) + " / 100");
+      head(t("lg.h_access"));
+      row({ emoji: "✅" }, t("lg.all"), fmtPct(cov.all));
+      row({ emoji: "⛔" }, t("lg.none"), fmtPct(cov.none));
+      if (cov.mean_score != null) row({ emoji: "⌀" }, t("lg.mean"), nf0.format(cov.mean_score) + " / 100");
       y += 4;
-      d.services.forEach(function (s) { row({ emoji: s.emoji || "•" }, s.label, fmtPct(cov.per_service[s.id] || 0)); });
+      d.services.forEach(function (s) { row({ emoji: s.emoji || "•" }, svcLabel(s), fmtPct(cov.per_service[s.id] || 0)); });
     }
     if (p.mode === "transit") {
       y += 6;
@@ -991,15 +995,15 @@
 
     ctx.font = "11px " + FONT; ctx.fillStyle = "#5f6670";
     var dt = new Date();
-    ctx.fillText("Generado el " + ("0" + dt.getDate()).slice(-2) + "/" + ("0" + (dt.getMonth() + 1)).slice(-2) + "/" +
-                 dt.getFullYear() + " · olau-am.github.io/quinzemin-web", x, C.H - 16);
+    ctx.fillText(t("cap.generated", { d: ("0" + dt.getDate()).slice(-2) + "/" + ("0" + (dt.getMonth() + 1)).slice(-2) + "/" +
+                 dt.getFullYear() }) + " · olau-am.github.io/quinzemin-web", x, C.H - 16);
   }
 
   $("qm-capture").addEventListener("click", function () {
     if (!state.data || !state.geo || !state.layer) return;
     var btn = this;
     btn.disabled = true;
-    status("Generando la captura…", "busy");
+    status(t("cap.generating"), "busy");
     captureMap().then(function (r) {
       r.canvas.toBlob(function (blob) {
         var a = document.createElement("a");
@@ -1008,10 +1012,9 @@
         document.body.appendChild(a);
         a.click();
         setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-        status(r.tiles < r.total ? "Captura descargada (faltan " + (r.total - r.tiles) + " teselas del mapa base)."
-                                 : "Captura descargada: " + a.download);
+        status(r.tiles < r.total ? t("cap.missing", { n: r.total - r.tiles }) : t("cap.done", { f: a.download }));
       }, "image/png");
-    }).catch(function (e) { status("No se pudo generar la captura: " + errorText(e), "error"); })
+    }).catch(function (e) { status(t("cap.failed", { e: errorText(e) }), "error"); })
       .then(function () { btn.disabled = false; });
   });
 
@@ -1030,6 +1033,64 @@
   var legendBtn = toggler("qm-legend-toggle", "qm-legend", "▾", "▸");
   var panelBtn = toggler("qm-panel-toggle", "qm-panel", "☰", "☰");
   if (window.matchMedia("(max-width: 700px)").matches) { legendBtn.click(); panelBtn.click(); }
+
+  // ------------------------------------------------------------------
+  // Idioma
+  // ------------------------------------------------------------------
+  var langBtn = $("qm-lang-btn"), langMenu = $("qm-lang-menu");
+
+  function renderLangPicker() {
+    langBtn.innerHTML = I18N.flag(I18N.lang) + "<span>" + I18N.lang.toUpperCase() + "</span>";
+    langMenu.innerHTML = I18N.langs.map(function (l) {
+      return '<li role="option" tabindex="-1" lang="' + l.code + '" data-lang="' + l.code + '" aria-selected="' +
+        (l.code === I18N.lang) + '">' + I18N.flag(l.code) + "<span>" + l.name + "</span></li>";
+    }).join("");
+  }
+
+  function closeLangMenu() { langMenu.hidden = true; langBtn.setAttribute("aria-expanded", "false"); }
+
+  langBtn.addEventListener("click", function (ev) {
+    ev.stopPropagation();
+    var open = langMenu.hidden;
+    langMenu.hidden = !open;
+    langBtn.setAttribute("aria-expanded", String(open));
+    if (open) (langMenu.querySelector('[aria-selected="true"]') || langMenu.firstChild).focus();
+  });
+  langMenu.addEventListener("click", function (ev) {
+    var li = ev.target.closest("li[data-lang]");
+    if (li) { closeLangMenu(); setLanguage(li.dataset.lang); langBtn.focus(); }
+  });
+  langMenu.addEventListener("keydown", function (ev) {
+    var items = Array.prototype.slice.call(langMenu.querySelectorAll("li")), i = items.indexOf(document.activeElement);
+    if (ev.key === "ArrowDown") { items[Math.min(i + 1, items.length - 1)].focus(); ev.preventDefault(); }
+    else if (ev.key === "ArrowUp") { items[Math.max(i - 1, 0)].focus(); ev.preventDefault(); }
+    else if (ev.key === "Enter" || ev.key === " ") { document.activeElement.click(); ev.preventDefault(); }
+    else if (ev.key === "Escape") { closeLangMenu(); langBtn.focus(); }
+  });
+  document.addEventListener("click", function (ev) { if (!ev.target.closest(".qm-lang")) closeLangMenu(); });
+
+  // Cambiar de idioma vuelve a pintar todo lo que tiene texto, sin recalcular ni recargar datos
+  function setLanguage(code) {
+    if (code === I18N.lang) return;
+    I18N.set(code);
+    setFormats();
+    I18N.apply();
+    renderLangPicker();
+    if (state.city && state.city.services && !form.hidden) {
+      var p = collectParams();
+      fillForm(state.city, p);
+    }
+    syncFields();
+    setYaml();
+    if (state.data) renderResult(state.data);
+    if (state.unprepared) unpreparedTexts(state.unprepared);
+    if (state.city && state.city.prepared) { cityInfo(state.city); renderTransitSection(state.city); state.feedsFor = null; }
+    if (!list.hidden && results.length) renderResults();
+    status(null);
+  }
+
+  I18N.apply();
+  renderLangPicker();
 
   // ------------------------------------------------------------------
   // Arranque

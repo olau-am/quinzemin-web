@@ -20,7 +20,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "ui")
 os.makedirs(OUT, exist_ok=True)
-BASE = "http://localhost:8000/?api=http://localhost:8080"
+BASE = "http://localhost:8000/?api=http://localhost:8080&lang=es"
 
 opts = webdriver.ChromeOptions()
 opts.add_argument("--headless=new")

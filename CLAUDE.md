@@ -31,7 +31,7 @@ no volver a preguntar lo que ya está decidido (§2).**
 | `quinzemin/results.py` | payload JSON común (API y precálculo), hash de parámetros, YAML reproducible |
 | `quinzemin/jobs.py` | trabajos `jobs/{id}.json` + lock; local = hilo, gcs = Cloud Run Job (`quinzemin-job`) |
 | `Dockerfile`, `cloudbuild.yaml`, `docker-compose.yml` | imagen única API + Job; build que actualiza ambos; desarrollo local |
-| `docs/` | web en GitHub Pages: `index.html`, `app.js`, `app.css`, `data/cities/46250/` |
+| `docs/` | web en GitHub Pages: `index.html`, `app.js`, `app.css`, `i18n.js` (textos es/ca/en, banderas SVG), `data/cities/46250/` |
 | `config/cities/46250.yaml` | configuración de València (fuentes municipales), antes `config.yaml` |
 | `legacy/` | copia **congelada** del `src/` original para el snapshot de regresión; no editar |
 | `scripts/snapshot_legacy.py` | genera `tests/fixtures/legacy/` (3 modos × 2 vistas) |
