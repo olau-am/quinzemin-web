@@ -57,3 +57,25 @@ Cada mapa muestra las atribuciones de los datos que usa y la fecha en que se obt
 | [Mobility Database](https://mobilitydatabase.org) | catálogo de feeds GTFS | CC0 (metadatos) | nada; se cita por cortesía |
 
 Esta aplicación no está respaldada por ninguna de las entidades anteriores.
+
+## Licencia
+
+Copyright © 2026 olau-am y colaboradores de quinzemin.
+
+**Código:** Licencia cedida con arreglo a la EUPL — [Licencia Pública de la Unión Europea v. 1.2](LICENSE)
+(`EUPL-1.2`). Es una licencia libre con *copyleft*: quien distribuya el código o una versión
+modificada, también si la ofrece como servicio en red, debe hacerlo con esta licencia (o una
+compatible de su apéndice, como GPL v3 o AGPL v3) y publicar su código fuente.
+
+| Idioma | Fichero |
+|---|---|
+| inglés (oficial) | [`LICENSE`](LICENSE) |
+| castellano (oficial) | [`LICENSES/EUPL-1.2.es.txt`](LICENSES/EUPL-1.2.es.txt) |
+| catalán (traducción no oficial, sin valor jurídico) | [`LICENSES/EUPL-1.2.ca.txt`](LICENSES/EUPL-1.2.ca.txt) |
+
+Origen y verificación de cada texto: [`LICENSES/README.md`](LICENSES/README.md).
+
+**Datos:** la EUPL cubre el código. Los datos que contiene el repositorio y los que genera la
+aplicación (`docs/data/`, `tests/fixtures/`, los bundles de cada ciudad) mantienen las licencias de
+sus fuentes (tabla de arriba): lo que deriva de OpenStreetMap está sujeto a la **ODbL** y el resto
+exige citar a su fuente.

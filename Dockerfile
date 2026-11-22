@@ -16,7 +16,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Dependencias primero (se reaprovecha la capa si solo cambia el código)
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md LICENSE ./
+COPY LICENSES ./LICENSES
 RUN mkdir -p quinzemin api && touch quinzemin/__init__.py api/__init__.py \
     && pip install ".[api,prepare]" && pip uninstall -y quinzemin
 

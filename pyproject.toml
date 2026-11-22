@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]   # licencia como expresión SPDX (PEP 639)
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "quinzemin"
 version = "0.1.0"
 description = "Accesibilidad a servicios básicos (ciudad de los 15 minutos) por sección censal: motor, API y web"
 readme = "README.md"
+license = "EUPL-1.2"
+license-files = ["LICENSE", "LICENSES/*.txt"]
 requires-python = ">=3.13"
 # Núcleo del motor: lo necesario para compute(bundle, params) en runtime (sin osmnx)
 dependencies = [
